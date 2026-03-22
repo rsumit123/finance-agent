@@ -71,11 +71,11 @@ export default function UploadPage() {
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (full = false) => {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await startGmailSync();
+      const res = await startGmailSync(full);
       setSyncResult(res);
       getGmailStatus().then(setGmailStatus).catch(() => {});
       getUploadHistory().then(setHistory).catch(() => {});
@@ -162,9 +162,13 @@ export default function UploadPage() {
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={handleSync} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button onClick={() => handleSync(false)} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <RefreshCw size={16} />
-                {syncing ? "Syncing..." : "Sync Alerts"}
+                {syncing ? "Syncing..." : "Sync New"}
+              </button>
+              <button className="secondary" onClick={() => handleSync(true)} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <RefreshCw size={16} />
+                Full Resync
               </button>
               <button onClick={handleSyncStatements} disabled={syncingStatements} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <FileSearch size={16} />

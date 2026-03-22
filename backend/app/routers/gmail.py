@@ -134,11 +134,18 @@ def gmail_status(db: Session = Depends(get_db)):
 
 
 @router.post("/sync")
-def gmail_sync(db: Session = Depends(get_db)):
+def gmail_sync(
+    full: bool = Query(False, description="Reset last_sync and do a full resync"),
+    db: Session = Depends(get_db),
+):
     """Sync bank alert emails from Gmail."""
     account = db.query(GmailAccount).first()
     if not account:
         raise HTTPException(status_code=400, detail="Gmail not connected")
+
+    if full:
+        account.last_sync_at = None
+        db.commit()
 
     result = sync_emails(db)
     if result.get("error"):
