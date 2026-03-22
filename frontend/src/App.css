@@ -356,19 +356,153 @@ tr:hover {
   padding: 20px !important;
 }
 
+/* Bottom Tab Bar (mobile only) */
+.bottom-bar {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
     display: none;
   }
+
+  .bottom-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    justify-content: space-around;
+    padding: 6px 0 env(safe-area-inset-bottom, 6px);
+  }
+
+  .bottom-bar a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 4px;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 10px;
+    font-weight: 500;
+    min-width: 56px;
+    transition: color 0.15s;
+  }
+
+  .bottom-bar a.active {
+    color: var(--accent);
+  }
+
   .content {
     margin-left: 0;
     padding: 16px;
+    padding-bottom: 80px;
   }
+
   .grid-2 {
     grid-template-columns: 1fr;
   }
+
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  /* Touch-friendly sizing */
+  button {
+    min-height: 44px;
+  }
+
+  input, select {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+
+  /* Page headers with actions */
+  .page-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    padding: 24px;
+  }
+
+  .upload-actions {
+    flex-direction: column !important;
+  }
+
+  .upload-actions button {
+    margin-top: 0 !important;
+  }
+
+  /* Responsive tables → card list */
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table,
+  .responsive-table tbody,
+  .responsive-table tr,
+  .responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-table tr {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+  }
+
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: none;
+    font-size: 14px;
+  }
+
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+
+  .responsive-table td:last-child {
+    border-bottom: none;
+  }
+
+  /* Stat card values slightly smaller on mobile */
+  .stat-card .value {
+    font-size: 22px;
+  }
+
+  .amount-input {
+    font-size: 24px !important;
+  }
+
+  /* Category limit rows */
+  .cat-limit-row {
+    flex-wrap: wrap !important;
+  }
+
+  .cat-limit-row select,
+  .cat-limit-row input {
+    flex: 1 1 100% !important;
   }
 }

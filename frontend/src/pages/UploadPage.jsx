@@ -87,7 +87,7 @@ export default function UploadPage() {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginTop: 16, alignItems: "center" }}>
+        <div className="upload-actions" style={{ display: "flex", gap: 12, marginTop: 16, alignItems: "center" }}>
           <div className="form-group" style={{ margin: 0, flex: 1 }}>
             <label>Statement Type</label>
             <select value={fileType} onChange={(e) => setFileType(e.target.value)}>
@@ -125,7 +125,7 @@ export default function UploadPage() {
           </p>
 
           {result.transactions.length > 0 && (
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -138,11 +138,11 @@ export default function UploadPage() {
               <tbody>
                 {result.transactions.slice(0, 20).map((t) => (
                   <tr key={t.id}>
-                    <td>{t.date}</td>
-                    <td>{t.description || "—"}</td>
-                    <td><span className="tag default">{t.category}</span></td>
-                    <td><span className="tag default">{t.payment_method.replace("_", " ")}</span></td>
-                    <td style={{ textAlign: "right", fontWeight: 600 }}>{formatINR(t.amount)}</td>
+                    <td data-label="Date">{t.date}</td>
+                    <td data-label="Description">{t.description || "—"}</td>
+                    <td data-label="Category"><span className="tag default">{t.category}</span></td>
+                    <td data-label="Payment"><span className="tag default">{t.payment_method.replace("_", " ")}</span></td>
+                    <td data-label="Amount" style={{ fontWeight: 600 }}>{formatINR(t.amount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -160,7 +160,7 @@ export default function UploadPage() {
       {history.length > 0 && (
         <div className="card">
           <h2>Upload History</h2>
-          <table>
+          <table className="responsive-table">
             <thead>
               <tr>
                 <th>File</th>
@@ -172,10 +172,10 @@ export default function UploadPage() {
             <tbody>
               {history.map((h) => (
                 <tr key={h.id}>
-                  <td>{h.filename}</td>
-                  <td><span className="tag default">{h.file_type}</span></td>
-                  <td>{h.transactions_found}</td>
-                  <td>{new Date(h.uploaded_at).toLocaleDateString()}</td>
+                  <td data-label="File">{h.filename}</td>
+                  <td data-label="Type"><span className="tag default">{h.file_type}</span></td>
+                  <td data-label="Transactions">{h.transactions_found}</td>
+                  <td data-label="Uploaded">{new Date(h.uploaded_at).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

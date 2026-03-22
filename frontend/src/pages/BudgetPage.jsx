@@ -81,7 +81,7 @@ export default function BudgetPage() {
 
   return (
     <div>
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="page-header page-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>Budget</h1>
           <p>Set spending limits to stay on track</p>
@@ -122,7 +122,7 @@ export default function BudgetPage() {
                 Category Limits (optional)
               </label>
               {form.category_limits.map((cl, idx) => (
-                <div key={idx} style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div key={idx} className="cat-limit-row" style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <select
                     value={cl.category}
                     onChange={(e) => updateCatLimit(idx, "category", e.target.value)}
@@ -209,7 +209,7 @@ export default function BudgetPage() {
           {Object.keys(status.categories).length > 0 && (
             <div className="card">
               <h2>Category Budgets</h2>
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th>Category</th>
@@ -222,14 +222,14 @@ export default function BudgetPage() {
                 <tbody>
                   {Object.entries(status.categories).map(([cat, info]) => (
                     <tr key={cat}>
-                      <td>{cat}</td>
-                      <td>{formatINR(info.spent)}</td>
-                      <td>{formatINR(info.limit)}</td>
-                      <td style={{ color: getColor(info.percent_used) }}>
+                      <td data-label="Category">{cat}</td>
+                      <td data-label="Spent">{formatINR(info.spent)}</td>
+                      <td data-label="Limit">{formatINR(info.limit)}</td>
+                      <td data-label="Remaining" style={{ color: getColor(info.percent_used) }}>
                         {formatINR(info.remaining)}
                       </td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <td data-label="Usage">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
                           <div className="progress-bar" style={{ flex: 1, margin: 0 }}>
                             <div
                               className="progress-fill"

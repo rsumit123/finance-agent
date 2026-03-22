@@ -55,7 +55,7 @@ export default function Expenses() {
 
   return (
     <div>
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="page-header page-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>Expenses</h1>
           <p>Track and manage your spending</p>
@@ -140,7 +140,7 @@ export default function Expenses() {
       </div>
 
       <div className="card">
-        <table>
+        <table className="responsive-table">
           <thead>
             <tr>
               <th>Date</th>
@@ -162,13 +162,13 @@ export default function Expenses() {
             ) : (
               expenses.map((e) => (
                 <tr key={e.id}>
-                  <td>{e.date}</td>
-                  <td>{e.description || "—"}</td>
-                  <td><span className="tag default">{e.category}</span></td>
-                  <td><span className="tag default">{e.payment_method.replace("_", " ")}</span></td>
-                  <td><span className="tag default">{e.source}</span></td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>{formatINR(e.amount)}</td>
-                  <td>
+                  <td data-label="Date">{e.date}</td>
+                  <td data-label="Description">{e.description || "—"}</td>
+                  <td data-label="Category"><span className="tag default">{e.category}</span></td>
+                  <td data-label="Payment"><span className="tag default">{e.payment_method.replace("_", " ")}</span></td>
+                  <td data-label="Source"><span className="tag default">{e.source}</span></td>
+                  <td data-label="Amount" style={{ fontWeight: 600 }}>{formatINR(e.amount)}</td>
+                  <td data-label="">
                     <button
                       className="danger"
                       style={{ padding: "4px 8px" }}

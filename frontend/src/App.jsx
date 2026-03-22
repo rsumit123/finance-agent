@@ -54,6 +54,28 @@ function App() {
             <Route path="/budget" element={<BudgetPage />} />
           </Routes>
         </main>
+        <nav className="bottom-bar">
+          <NavLink to="/" end>
+            <LayoutDashboard size={20} />
+            Dashboard
+          </NavLink>
+          <NavLink to="/expenses">
+            <Receipt size={20} />
+            Expenses
+          </NavLink>
+          <NavLink to="/upload">
+            <Upload size={20} />
+            Upload
+          </NavLink>
+          <NavLink to="/advisor">
+            <ShoppingCart size={20} />
+            Buy?
+          </NavLink>
+          <NavLink to="/budget">
+            <Wallet size={20} />
+            Budget
+          </NavLink>
+        </nav>
       </div>
     </BrowserRouter>
   );
