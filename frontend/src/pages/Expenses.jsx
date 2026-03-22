@@ -106,8 +106,16 @@ export default function Expenses() {
     load();
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
   const handleDelete = async (id) => {
+    if (deleteConfirmId !== id) {
+      setDeleteConfirmId(id);
+      setTimeout(() => setDeleteConfirmId(null), 3000); // auto-dismiss after 3s
+      return;
+    }
     await deleteExpense(id);
+    setDeleteConfirmId(null);
     load();
   };
 
@@ -293,19 +301,29 @@ export default function Expenses() {
                 {/* Right: amount + delete */}
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(e.amount)}</div>
-                  <button
-                    onClick={() => handleDelete(e.id)}
-                    style={{
-                      background: "none", border: "none", color: "var(--text-dim)",
-                      padding: 4, minHeight: 0, marginTop: 4, cursor: "pointer",
-                      opacity: 0.5, transition: "opacity 0.15s",
-                    }}
-                    onMouseEnter={(ev) => { ev.currentTarget.style.opacity = 1; ev.currentTarget.style.color = "var(--red)"; }}
-                    onMouseLeave={(ev) => { ev.currentTarget.style.opacity = 0.5; ev.currentTarget.style.color = "var(--text-dim)"; }}
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {deleteConfirmId === e.id ? (
+                    <button
+                      onClick={() => handleDelete(e.id)}
+                      className="danger"
+                      style={{ padding: "3px 8px", fontSize: 11, minHeight: 0, marginTop: 4 }}
+                    >
+                      Confirm?
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleDelete(e.id)}
+                      style={{
+                        background: "none", border: "none", color: "var(--text-dim)",
+                        padding: 4, minHeight: 0, marginTop: 4, cursor: "pointer",
+                        opacity: 0.5, transition: "opacity 0.15s",
+                      }}
+                      onMouseEnter={(ev) => { ev.currentTarget.style.opacity = 1; ev.currentTarget.style.color = "var(--red)"; }}
+                      onMouseLeave={(ev) => { ev.currentTarget.style.opacity = 0.5; ev.currentTarget.style.color = "var(--text-dim)"; }}
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             );

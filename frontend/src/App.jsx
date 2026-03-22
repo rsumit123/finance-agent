@@ -5,12 +5,14 @@ import {
   Upload,
   ShoppingCart,
   Wallet,
+  CreditCard,
 } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Expenses from "./pages/Expenses";
 import UploadPage from "./pages/UploadPage";
 import Advisor from "./pages/Advisor";
 import BudgetPage from "./pages/BudgetPage";
+import StatementsPage from "./pages/StatementsPage";
 import "./App.css";
 
 function App() {
@@ -33,7 +35,11 @@ function App() {
             </NavLink>
             <NavLink to="/upload">
               <Upload size={20} />
-              Upload Statement
+              Import
+            </NavLink>
+            <NavLink to="/statements">
+              <CreditCard size={20} />
+              Statements
             </NavLink>
             <NavLink to="/advisor">
               <ShoppingCart size={20} />
@@ -50,6 +56,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/upload" element={<UploadPage />} />
+            <Route path="/statements" element={<StatementsPage />} />
             <Route path="/advisor" element={<Advisor />} />
             <Route path="/budget" element={<BudgetPage />} />
           </Routes>
@@ -65,7 +72,11 @@ function App() {
           </NavLink>
           <NavLink to="/upload">
             <Upload size={20} />
-            Upload
+            Import
+          </NavLink>
+          <NavLink to="/statements">
+            <CreditCard size={20} />
+            Cards
           </NavLink>
           <NavLink to="/advisor">
             <ShoppingCart size={20} />

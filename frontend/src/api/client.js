@@ -23,6 +23,9 @@ export const getExpenseSummary = (period = "month") =>
 export const getSubscriptions = () =>
   api.get("/api/expenses/subscriptions").then((r) => r.data);
 
+export const getSources = () =>
+  api.get("/api/expenses/sources").then((r) => r.data);
+
 // Budget
 export const getBudget = () =>
   api.get("/api/budget/").then((r) => r.data);

@@ -6,7 +6,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from collections import defaultdict
+
 from ..database import get_db
+from ..models import Expense
 from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary, Subscription
 from ..services.subscriptions import detect_subscriptions
 from ..services.tracker import (
@@ -57,6 +60,88 @@ def expense_summary(
     else:
         start, end = get_current_month_range()
     return summarize_period(db, start, end)
+
+
+@router.get("/sources")
+def get_sources(db: Session = Depends(get_db)):
+    """Get all transaction sources grouped by bank and month.
+
+    Returns a list of source groups with transaction count, total amount,
+    date range, and bank identification.
+    """
+    expenses = db.query(Expense).order_by(Expense.date.desc()).all()
+
+    # Group by (source_type, month)
+    groups: dict[tuple, list] = defaultdict(list)
+    for e in expenses:
+        # Determine bank from source
+        source = e.source or "unknown"
+        bank = _source_to_bank(source)
+        source_type = _source_to_type(source)
+        month_key = e.date.strftime("%Y-%m") if e.date else "unknown"
+        groups[(bank, source_type, month_key)].append(e)
+
+    result = []
+    for (bank, source_type, month), txns in sorted(groups.items(), key=lambda x: x[0][2], reverse=True):
+        amounts = [t.amount for t in txns]
+        dates = [t.date for t in txns if t.date]
+        result.append({
+            "bank": bank,
+            "source_type": source_type,
+            "month": month,
+            "month_label": _month_label(month),
+            "transaction_count": len(txns),
+            "total_amount": round(sum(amounts), 2),
+            "min_date": min(dates).isoformat() if dates else None,
+            "max_date": max(dates).isoformat() if dates else None,
+        })
+
+    return result
+
+
+def _source_to_bank(source: str) -> str:
+    if "hdfc" in source:
+        return "HDFC"
+    if "axis" in source:
+        return "Axis"
+    if "scapia" in source:
+        return "Scapia"
+    if "icici" in source:
+        return "ICICI"
+    if "sbi" in source:
+        return "SBI"
+    if source.startswith("stmt_"):
+        return source.replace("stmt_", "").upper()
+    if source == "upi_pdf":
+        return "PhonePe/UPI"
+    if source == "credit_card_pdf":
+        return "Credit Card"
+    if source == "bank_pdf":
+        return "Bank"
+    if source == "manual":
+        return "Manual"
+    return source.replace("_", " ").title()
+
+
+def _source_to_type(source: str) -> str:
+    if source.startswith("email"):
+        return "gmail_alert"
+    if source.startswith("stmt_"):
+        return "gmail_statement"
+    if source.endswith("_pdf"):
+        return "pdf_upload"
+    if source == "manual":
+        return "manual"
+    return "other"
+
+
+def _month_label(month: str) -> str:
+    try:
+        from datetime import datetime
+        dt = datetime.strptime(month, "%Y-%m")
+        return dt.strftime("%b %Y")
+    except ValueError:
+        return month
 
 
 @router.get("/subscriptions", response_model=list[Subscription])
