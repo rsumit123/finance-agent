@@ -64,7 +64,9 @@ export default function Expenses() {
   const [filter, setFilter] = useState({ period: "month" });
 
   const load = () => {
-    getExpenses({ period: filter.period, limit: 500 }).then((data) => {
+    const params = { limit: 500 };
+    if (filter.period !== "all") params.period = filter.period;
+    getExpenses(params).then((data) => {
       setAllExpenses(data);
       setPage(0);
     }).catch(() => {});
@@ -169,6 +171,12 @@ export default function Expenses() {
             This {p.charAt(0).toUpperCase() + p.slice(1)}
           </button>
         ))}
+        <button
+          className={filter.period === "all" ? "" : "secondary"}
+          onClick={() => setFilter({ ...filter, period: "all" })}
+        >
+          All Time
+        </button>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
