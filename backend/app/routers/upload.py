@@ -15,7 +15,7 @@ from ..parsers import (
     parse_upi_statement,
 )
 from ..schemas import ExpenseOut, UploadResult
-from ..services.tracker import create_expenses_bulk
+from ..services.tracker import create_expenses_bulk_dedup
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 
@@ -68,8 +68,25 @@ async def upload_statement(
     finally:
         os.unlink(tmp_path)
 
-    # Save transactions to DB
-    expenses = create_expenses_bulk(db, parsed) if parsed else []
+    # Save transactions to DB with dedup
+    if parsed:
+        expenses, duplicates = create_expenses_bulk_dedup(db, parsed)
+    else:
+        expenses, duplicates = [], []
+
+    # Build duplicate ExpenseOut-like objects for response
+    dup_out = []
+    for d in duplicates:
+        dup_out.append(ExpenseOut(
+            id=0,
+            amount=d.amount,
+            category=d.category,
+            payment_method=d.payment_method,
+            description=d.description,
+            date=d.date,
+            source=d.source,
+            reference_id=d.reference_id,
+        ))
 
     # Record upload history
     history = UploadHistory(
@@ -85,6 +102,8 @@ async def upload_statement(
         file_type=detected_type,
         transactions_found=len(expenses),
         transactions=[ExpenseOut.model_validate(e) for e in expenses],
+        duplicates_skipped=len(duplicates),
+        duplicate_transactions=dup_out,
     )
 
 

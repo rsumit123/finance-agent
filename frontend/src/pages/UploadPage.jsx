@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { uploadStatement, getUploadHistory } from "../api/client";
 import { useEffect } from "react";
 
@@ -16,6 +16,7 @@ export default function UploadPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState([]);
   const [dragover, setDragover] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const inputRef = useRef();
 
   useEffect(() => {
@@ -127,12 +128,18 @@ export default function UploadPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <CheckCircle size={24} color="var(--green)" />
             <h2 style={{ margin: 0 }}>
-              Found {result.transactions_found} transactions
+              Imported {result.transactions_found} transactions
             </h2>
           </div>
-          <p style={{ color: "var(--text-dim)", marginBottom: 16 }}>
+          <p style={{ color: "var(--text-dim)", marginBottom: 8 }}>
             Detected as: <span className="tag default">{result.file_type}</span>
           </p>
+          {result.duplicates_skipped > 0 && (
+            <p style={{ color: "var(--yellow)", marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={16} />
+              {result.duplicates_skipped} duplicate{result.duplicates_skipped > 1 ? "s" : ""} skipped (already imported)
+            </p>
+          )}
 
           {result.transactions.length > 0 && (
             <table className="responsive-table">
@@ -162,6 +169,41 @@ export default function UploadPage() {
             <p style={{ color: "var(--text-dim)", marginTop: 12 }}>
               Showing 20 of {result.transactions.length}. View all in Expenses.
             </p>
+          )}
+
+          {result.duplicates_skipped > 0 && result.duplicate_transactions?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <button
+                className="secondary"
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}
+                onClick={() => setShowDuplicates(!showDuplicates)}
+              >
+                {showDuplicates ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showDuplicates ? "Hide" : "Show"} {result.duplicates_skipped} skipped duplicates
+              </button>
+              {showDuplicates && (
+                <table className="responsive-table" style={{ marginTop: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Category</th>
+                      <th style={{ textAlign: "right" }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.duplicate_transactions.map((t, i) => (
+                      <tr key={i} style={{ opacity: 0.6 }}>
+                        <td data-label="Date">{t.date}</td>
+                        <td data-label="Description">{t.description || "—"}</td>
+                        <td data-label="Category"><span className="tag default">{t.category}</span></td>
+                        <td data-label="Amount" style={{ fontWeight: 600 }}>{formatINR(t.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
         </div>
       )}

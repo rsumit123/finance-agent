@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { getExpenseSummary, getBudgetStatus } from "../api/client";
+import { getExpenseSummary, getBudgetStatus, getSubscriptions } from "../api/client";
 
 const COLORS = [
   "#6366f1", "#22c55e", "#eab308", "#ef4444", "#f97316",
@@ -25,11 +25,13 @@ function formatINR(n) {
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [budget, setBudget] = useState(null);
+  const [subscriptions, setSubscriptions] = useState([]);
   const [period, setPeriod] = useState("month");
 
   useEffect(() => {
     getExpenseSummary(period).then(setSummary).catch(() => {});
     getBudgetStatus().then(setBudget).catch(() => {});
+    getSubscriptions().then(setSubscriptions).catch(() => {});
   }, [period]);
 
   const categoryData = summary
@@ -174,6 +176,38 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Recurring Payments */}
+      {subscriptions.length > 0 && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <h2>Recurring Payments</h2>
+          <p style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 16 }}>
+            Auto-detected from your transaction history — {formatINR(subscriptions.reduce((sum, s) => sum + s.amount, 0))}/month estimated
+          </p>
+          <table className="responsive-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Amount</th>
+                <th>Last Charged</th>
+                <th>Occurrences</th>
+                <th>Total Spent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subscriptions.map((s, i) => (
+                <tr key={i}>
+                  <td data-label="Service" style={{ fontWeight: 600 }}>{s.name}</td>
+                  <td data-label="Amount">{formatINR(s.amount)}</td>
+                  <td data-label="Last Charged">{s.last_charged}</td>
+                  <td data-label="Occurrences">{s.occurrence_count}x</td>
+                  <td data-label="Total Spent">{formatINR(s.total_spent)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

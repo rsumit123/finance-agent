@@ -17,6 +17,9 @@ export const deleteExpense = (id) =>
 export const getExpenseSummary = (period = "month") =>
   api.get("/api/expenses/summary", { params: { period } }).then((r) => r.data);
 
+export const getSubscriptions = () =>
+  api.get("/api/expenses/subscriptions").then((r) => r.data);
+
 // Budget
 export const getBudget = () =>
   api.get("/api/budget/").then((r) => r.data);

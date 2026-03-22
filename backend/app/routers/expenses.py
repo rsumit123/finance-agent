@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary
+from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary, Subscription
+from ..services.subscriptions import detect_subscriptions
 from ..services.tracker import (
     create_expense,
     delete_expense,
@@ -56,6 +57,12 @@ def expense_summary(
     else:
         start, end = get_current_month_range()
     return summarize_period(db, start, end)
+
+
+@router.get("/subscriptions", response_model=list[Subscription])
+def get_subscriptions(db: Session = Depends(get_db)):
+    """Detect recurring/subscription payments from expense history."""
+    return detect_subscriptions(db)
 
 
 @router.delete("/{expense_id}")

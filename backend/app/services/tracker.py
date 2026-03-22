@@ -1,5 +1,6 @@
 """Expense tracking and budget management service."""
 
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -8,6 +9,92 @@ from sqlalchemy.orm import Session
 
 from ..models import Budget, CategoryBudget, Expense
 from ..schemas import BudgetCreate, BudgetStatus, ExpenseCreate, ExpenseSummary
+
+
+def _normalize_desc(desc: str) -> str:
+    """Normalize description for comparison."""
+    s = desc.lower().strip()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _is_duplicate(new: ExpenseCreate, existing: Expense) -> bool:
+    """Check if a new expense is a duplicate of an existing one."""
+    # Must match on date and amount
+    if new.date != existing.date or abs(new.amount - existing.amount) > 0.01:
+        return False
+
+    # If both have reference_id (UTR), exact match = definite duplicate
+    if new.reference_id and existing.reference_id:
+        return new.reference_id == existing.reference_id
+
+    # Fuzzy description match
+    new_desc = _normalize_desc(new.description)
+    existing_desc = _normalize_desc(existing.description)
+
+    if not new_desc or not existing_desc:
+        # If descriptions are empty, match on date+amount+payment_method
+        return new.payment_method == existing.payment_method
+
+    # Check if one contains the other, or they share significant overlap
+    if new_desc in existing_desc or existing_desc in new_desc:
+        return True
+
+    # Check word overlap
+    new_words = set(new_desc.split())
+    existing_words = set(existing_desc.split())
+    if len(new_words) > 0 and len(existing_words) > 0:
+        overlap = len(new_words & existing_words)
+        min_len = min(len(new_words), len(existing_words))
+        if min_len > 0 and overlap / min_len >= 0.5:
+            return True
+
+    return False
+
+
+def create_expenses_bulk_dedup(
+    db: Session, items: list[ExpenseCreate]
+) -> tuple[list[Expense], list[ExpenseCreate]]:
+    """Create expenses in bulk, skipping duplicates.
+
+    Returns (inserted_expenses, duplicate_items).
+    """
+    if not items:
+        return [], []
+
+    # Get date range of incoming items
+    dates = [item.date for item in items]
+    min_date = min(dates)
+    max_date = max(dates)
+
+    # Fetch existing expenses in that date range
+    existing = (
+        db.query(Expense)
+        .filter(Expense.date >= min_date, Expense.date <= max_date)
+        .all()
+    )
+
+    new_items = []
+    duplicates = []
+
+    for item in items:
+        # Check against existing DB records
+        is_dup = any(_is_duplicate(item, ex) for ex in existing)
+        if is_dup:
+            duplicates.append(item)
+        else:
+            new_items.append(item)
+
+    # Insert non-duplicates
+    expenses = [Expense(**d.model_dump()) for d in new_items]
+    if expenses:
+        db.add_all(expenses)
+        db.commit()
+        for e in expenses:
+            db.refresh(e)
+
+    return expenses, duplicates
 
 
 def create_expense(db: Session, data: ExpenseCreate) -> Expense:

@@ -101,3 +101,18 @@ class UploadResult(BaseModel):
     file_type: str
     transactions_found: int
     transactions: list[ExpenseOut]
+    duplicates_skipped: int = 0
+    duplicate_transactions: list[ExpenseOut] = []
+
+
+# --- Subscription schemas ---
+
+
+class Subscription(BaseModel):
+    name: str
+    amount: float
+    frequency: str = "monthly"
+    last_charged: date
+    next_expected: Optional[date] = None
+    total_spent: float
+    occurrence_count: int
