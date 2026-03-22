@@ -147,6 +147,74 @@ def gmail_sync(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/debug")
+def gmail_debug(db: Session = Depends(get_db)):
+    """Debug: show raw email subjects/senders/body snippets from last sync query."""
+    import base64
+    import re
+    from datetime import datetime, timedelta
+
+    from google.auth.transport.requests import Request
+
+    account = db.query(GmailAccount).first()
+    if not account:
+        raise HTTPException(status_code=400, detail="Gmail not connected")
+
+    creds = Credentials(
+        token=account.access_token,
+        refresh_token=account.refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GMAIL_CLIENT_ID,
+        client_secret=GMAIL_CLIENT_SECRET,
+    )
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        account.access_token = creds.token
+        db.commit()
+
+    service = build("gmail", "v1", credentials=creds)
+
+    from ..services.gmail_sync import GMAIL_QUERY_SENDERS
+    after_date = (datetime.now() - timedelta(days=90)).strftime("%Y/%m/%d")
+    query = f"({GMAIL_QUERY_SENDERS}) after:{after_date}"
+
+    results = service.users().messages().list(userId="me", q=query, maxResults=10).execute()
+    messages = results.get("messages", [])
+
+    debug_data = {"query": query, "total_results": results.get("resultSizeEstimate", 0), "emails": []}
+
+    for msg_meta in messages:
+        msg = service.users().messages().get(userId="me", id=msg_meta["id"], format="full").execute()
+        headers = msg.get("payload", {}).get("headers", [])
+
+        subject = ""
+        sender = ""
+        date_val = ""
+        for h in headers:
+            if h["name"].lower() == "subject":
+                subject = h["value"]
+            elif h["name"].lower() == "from":
+                sender = h["value"]
+            elif h["name"].lower() == "date":
+                date_val = h["value"]
+
+        # Extract body
+        from ..services.gmail_sync import _extract_email_body
+        body = _extract_email_body(msg.get("payload", {}))
+        body_clean = re.sub(r"<[^>]+>", " ", body)
+        body_clean = re.sub(r"\s+", " ", body_clean).strip()
+
+        debug_data["emails"].append({
+            "subject": subject,
+            "from": sender,
+            "date": date_val,
+            "body_preview": body_clean[:500],
+            "body_length": len(body),
+        })
+
+    return debug_data
+
+
 @router.post("/disconnect")
 def gmail_disconnect(db: Session = Depends(get_db)):
     """Disconnect Gmail — remove stored tokens."""
