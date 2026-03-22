@@ -27,6 +27,7 @@ BANK_SENDERS = [
     "alerts@axisbank.com",
     "alerts@axisbank.co.in",
     "credit-cards@axisbank.com",
+    "scapiacards@federalbank.co.in",
 ]
 
 # Gmail search query
@@ -358,6 +359,8 @@ def sync_statements(db: Session) -> dict:
 def _detect_bank(sender: str, subject: str) -> str:
     """Detect bank name from email sender/subject."""
     text = (sender + " " + subject).lower()
+    if "scapia" in text:
+        return "scapia"
     if "hdfc" in text:
         return "hdfc"
     if "axis" in text:

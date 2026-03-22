@@ -93,7 +93,9 @@ def parse_bank_email(subject: str, body: str, sender: str, received_at: datetime
     """Route an email to the correct parser based on sender/subject."""
     sender_lower = sender.lower()
 
-    if "hdfcbank" in sender_lower:
+    if "scapia" in sender_lower or "scapia" in subject.lower():
+        return _parse_scapia_email(subject, body, received_at)
+    elif "hdfcbank" in sender_lower:
         return _parse_hdfc_email(subject, body, received_at)
     elif "axisbank" in sender_lower:
         return _parse_axis_email(subject, body, received_at)
@@ -147,6 +149,56 @@ def _parse_hdfc_email(subject: str, body: str, received_at: datetime) -> Optiona
         )
 
     return None
+
+
+# Scapia pattern:
+# "Your payment on 22-03-2026 at 06:07 PM using your Scapia Federal RuPay Credit Card ending in 8921
+#  has been successfully processed. Amount ₹30.00 Merchant Vijay Kumar Paswan"
+SCAPIA_PATTERN = re.compile(
+    r"payment on\s+(\d{2}-\d{2}-\d{4})\s+at\s+(\d{1,2}:\d{2}\s*[AP]M)\s+"
+    r"using your Scapia.*?Amount\s*₹([\d,]+(?:\.\d{1,2})?)\s+"
+    r"Merchant\s+(.+?)(?:\s+Not you\?|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_scapia_email(subject: str, body: str, received_at: datetime) -> Optional[ExpenseCreate]:
+    """Parse Scapia Federal Credit Card transaction alert."""
+    # Skip non-transaction emails (promos, fuel surcharge waivers, etc.)
+    if "transaction was successful" not in subject.lower():
+        return None
+
+    m = SCAPIA_PATTERN.search(body)
+    if not m:
+        return None
+
+    date_str = m.group(1)  # 22-03-2026
+    time_str = m.group(2).strip()  # 06:07 PM
+    amount_str = m.group(3)  # 30.00
+    merchant = m.group(4).strip()  # Vijay Kumar Paswan
+
+    txn_date = _parse_date(date_str)
+    if not txn_date:
+        txn_date = received_at
+
+    # Parse time
+    try:
+        t = datetime.strptime(time_str, "%I:%M %p")
+        txn_date = txn_date.replace(hour=t.hour, minute=t.minute)
+    except ValueError:
+        pass
+
+    amount = float(amount_str.replace(",", ""))
+
+    return ExpenseCreate(
+        amount=amount,
+        category=_classify_category(merchant),
+        payment_method="credit_card",
+        description=merchant[:200],
+        date=txn_date,
+        source="email_scapia",
+        reference_id="",
+    )
 
 
 def _parse_axis_email(subject: str, body: str, received_at: datetime) -> Optional[ExpenseCreate]:
