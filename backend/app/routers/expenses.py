@@ -85,6 +85,8 @@ def get_sources(db: Session = Depends(get_db)):
     for (bank, source_type, month), txns in sorted(groups.items(), key=lambda x: x[0][2], reverse=True):
         amounts = [t.amount for t in txns]
         dates = [t.date for t in txns if t.date]
+        debits = sum(a for a in amounts if a > 0)
+        credits = abs(sum(a for a in amounts if a < 0))
         result.append({
             "bank": bank,
             "source_type": source_type,
@@ -92,6 +94,8 @@ def get_sources(db: Session = Depends(get_db)):
             "month_label": _month_label(month),
             "transaction_count": len(txns),
             "total_amount": round(sum(amounts), 2),
+            "total_debits": round(debits, 2),
+            "total_credits": round(credits, 2),
             "min_date": min(dates).isoformat() if dates else None,
             "max_date": max(dates).isoformat() if dates else None,
         })
