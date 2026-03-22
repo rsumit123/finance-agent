@@ -53,6 +53,7 @@ export default function Expenses() {
   const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [form, setForm] = useState({
     amount: "",
     category: "other",
@@ -73,6 +74,11 @@ export default function Expenses() {
 
   const filtered = allExpenses.filter((e) => {
     if (categoryFilter && e.category !== categoryFilter) return false;
+    if (sourceFilter) {
+      if (sourceFilter === "email" && !e.source.startsWith("email")) return false;
+      if (sourceFilter === "pdf" && !e.source.endsWith("_pdf")) return false;
+      if (sourceFilter === "manual" && e.source !== "manual") return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return (e.description || "").toLowerCase().includes(q)
@@ -86,7 +92,7 @@ export default function Expenses() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
 
-  useEffect(() => setPage(0), [search, categoryFilter]);
+  useEffect(() => setPage(0), [search, categoryFilter, sourceFilter]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -171,6 +177,16 @@ export default function Expenses() {
           <option value="">All Categories</option>
           {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
         </select>
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          style={{ minHeight: 44, padding: "8px 12px", width: "auto", minWidth: 110 }}
+        >
+          <option value="">All Sources</option>
+          <option value="email">Gmail</option>
+          <option value="pdf">PDF Upload</option>
+          <option value="manual">Manual</option>
+        </select>
       </div>
 
       {/* Search */}
@@ -254,6 +270,13 @@ export default function Expenses() {
                         {time}
                       </span>
                     )}
+                    <span style={{
+                      fontSize: 10, padding: "1px 6px", borderRadius: 4,
+                      background: e.source.startsWith("email") ? "rgba(99,102,241,0.15)" : e.source === "manual" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)",
+                      color: e.source.startsWith("email") ? "var(--accent)" : e.source === "manual" ? "var(--green)" : "var(--text-dim)",
+                    }}>
+                      {e.source.startsWith("email") ? "gmail" : e.source === "manual" ? "manual" : "pdf"}
+                    </span>
                   </div>
                 </div>
 
