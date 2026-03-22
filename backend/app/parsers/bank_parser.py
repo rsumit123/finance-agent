@@ -100,19 +100,22 @@ def _classify_category(description: str) -> str:
 
 def parse_bank_statement(pdf_path: str, password: str = None) -> list[ExpenseCreate]:
     """Parse a bank statement PDF and extract transactions."""
+    from .ocr_fallback import extract_tables_with_ocr_fallback, is_garbled
+
     transactions = []
 
     with pdfplumber.open(pdf_path, password=password) as pdf:
         for page in pdf.pages:
-            # Try table extraction first (most bank statements are tabular)
-            tables = page.extract_tables()
+            tables, ocr_text = extract_tables_with_ocr_fallback(page)
             if tables:
                 for table in tables:
                     transactions.extend(_parse_table_rows(table))
+            elif ocr_text:
+                transactions.extend(_parse_text_lines(ocr_text))
             else:
-                # Fallback to text-based parsing
                 text = page.extract_text() or ""
-                transactions.extend(_parse_text_lines(text))
+                if not is_garbled(text):
+                    transactions.extend(_parse_text_lines(text))
 
     return transactions
 

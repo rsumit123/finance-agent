@@ -73,17 +73,22 @@ def _extract_upi_id(text: str) -> str:
 
 def parse_upi_statement(pdf_path: str, password: str = None) -> list[ExpenseCreate]:
     """Parse a UPI transaction statement PDF."""
+    from .ocr_fallback import extract_tables_with_ocr_fallback, is_garbled
+
     transactions = []
 
     with pdfplumber.open(pdf_path, password=password) as pdf:
         for page in pdf.pages:
-            tables = page.extract_tables()
+            tables, ocr_text = extract_tables_with_ocr_fallback(page)
             if tables:
                 for table in tables:
                     transactions.extend(_parse_upi_table(table))
+            elif ocr_text:
+                transactions.extend(_parse_upi_text(ocr_text))
             else:
                 text = page.extract_text() or ""
-                transactions.extend(_parse_upi_text(text))
+                if not is_garbled(text):
+                    transactions.extend(_parse_upi_text(text))
 
     return transactions
 

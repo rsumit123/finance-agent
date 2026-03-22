@@ -10,10 +10,15 @@ from .upi_parser import parse_upi_statement
 
 def detect_statement_type(pdf_path: str, password: str = None) -> str:
     """Detect whether a PDF is a bank statement, credit card statement, or UPI export."""
+    from .ocr_fallback import is_garbled, ocr_page
+
     with pdfplumber.open(pdf_path, password=password) as pdf:
         text = ""
         for page in pdf.pages[:3]:  # Check first 3 pages
-            text += (page.extract_text() or "") + "\n"
+            page_text = page.extract_text() or ""
+            if is_garbled(page_text):
+                page_text = ocr_page(page)
+            text += page_text + "\n"
 
     text_lower = text.lower()
 
