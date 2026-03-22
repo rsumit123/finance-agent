@@ -68,12 +68,12 @@ def create_expenses_bulk_dedup(
     # Get date range of incoming items (use date portion for range query)
     dates = [item.date.date() if hasattr(item.date, 'date') and callable(item.date.date) else item.date for item in items]
     min_date = min(dates)
-    max_date = max(dates)
+    max_date = max(dates) + timedelta(days=1)  # +1 day to include all times on max_date
 
     # Fetch existing expenses in that date range
     existing = (
         db.query(Expense)
-        .filter(Expense.date >= min_date, Expense.date <= max_date)
+        .filter(Expense.date >= min_date, Expense.date < max_date)
         .all()
     )
 
