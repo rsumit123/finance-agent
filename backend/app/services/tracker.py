@@ -205,11 +205,34 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
         .filter(Expense.date >= start_date, Expense.date <= end_date)
         .scalar()
     )
+
+    # Split income (negative amounts) and expenses (positive)
+    income = float(
+        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+        .filter(Expense.date >= start_date, Expense.date <= end_date, Expense.amount < 0)
+        .scalar()
+    )
+    expense = float(
+        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+        .filter(Expense.date >= start_date, Expense.date <= end_date, Expense.amount > 0)
+        .scalar()
+    )
+
+    # For charts: only positive amounts (expenses) by category/payment
+    cat_data = get_period_total_by_category(db, start_date, end_date)
+    payment_data = get_period_total_by_payment(db, start_date, end_date)
+
+    # Filter out negative totals from chart data
+    cat_data = {k: v for k, v in cat_data.items() if v > 0}
+    payment_data = {k: v for k, v in payment_data.items() if v > 0}
+
     return ExpenseSummary(
         total=total,
         count=count or 0,
-        by_category=get_period_total_by_category(db, start_date, end_date),
-        by_payment_method=get_period_total_by_payment(db, start_date, end_date),
+        income=abs(income),
+        expense=expense,
+        by_category=cat_data,
+        by_payment_method=payment_data,
     )
 
 

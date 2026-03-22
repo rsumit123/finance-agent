@@ -36,6 +36,8 @@ class ExpenseOut(BaseModel):
 class ExpenseSummary(BaseModel):
     total: float
     count: int
+    income: float = 0
+    expense: float = 0
     by_category: dict[str, float]
     by_payment_method: dict[str, float]
 

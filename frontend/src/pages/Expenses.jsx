@@ -80,6 +80,8 @@ export default function Expenses() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [bankFilter, setBankFilter] = useState("");
+  const [txnTypeFilter, setTxnTypeFilter] = useState(""); // "debit" | "credit" | ""
   const [form, setForm] = useState({
     amount: "",
     category: "other",
@@ -100,6 +102,9 @@ export default function Expenses() {
 
   useEffect(load, [filter.period]);
 
+  // Derive available banks from data
+  const availableBanks = [...new Set(allExpenses.map((e) => getSourceInfo(e.source).bank).filter(Boolean))];
+
   const filtered = allExpenses.filter((e) => {
     if (categoryFilter && e.category !== categoryFilter) return false;
     if (sourceFilter) {
@@ -108,6 +113,12 @@ export default function Expenses() {
       if (sourceFilter === "pdf" && !e.source.endsWith("_pdf")) return false;
       if (sourceFilter === "manual" && e.source !== "manual") return false;
     }
+    if (bankFilter) {
+      const si = getSourceInfo(e.source);
+      if (si.bank !== bankFilter) return false;
+    }
+    if (txnTypeFilter === "debit" && e.amount < 0) return false;
+    if (txnTypeFilter === "credit" && e.amount >= 0) return false;
     if (search) {
       const q = search.toLowerCase();
       return (e.description || "").toLowerCase().includes(q)
@@ -121,7 +132,7 @@ export default function Expenses() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
 
-  useEffect(() => setPage(0), [search, categoryFilter, sourceFilter]);
+  useEffect(() => setPage(0), [search, categoryFilter, sourceFilter, bankFilter, txnTypeFilter]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -156,7 +167,12 @@ export default function Expenses() {
       <div className="page-header page-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>Expenses</h1>
-          <p>{filtered.length} transactions &middot; {formatINR(filteredTotal)}</p>
+          <p>
+            {filtered.length} transactions &middot; {formatINR(filtered.reduce((s, e) => s + (e.amount > 0 ? e.amount : 0), 0))} spent
+            {filtered.some((e) => e.amount < 0) && (
+              <span style={{ color: "var(--green)" }}> &middot; +{formatINR(Math.abs(filtered.reduce((s, e) => s + (e.amount < 0 ? e.amount : 0), 0)))} received</span>
+            )}
+          </p>
         </div>
         <button onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ Add"}
@@ -221,15 +237,23 @@ export default function Expenses() {
           {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
         </select>
         <select
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
+          value={bankFilter}
+          onChange={(e) => setBankFilter(e.target.value)}
           style={{ minHeight: 44, padding: "8px 12px", width: "auto", minWidth: 110 }}
         >
-          <option value="">All Sources</option>
-          <option value="email">Gmail Alerts</option>
-          <option value="gmail_stmt">Gmail Statements</option>
-          <option value="pdf">PDF Upload</option>
-          <option value="manual">Manual</option>
+          <option value="">All Banks</option>
+          {availableBanks.map((b) => (
+            <option key={b} value={b}>{b.charAt(0).toUpperCase() + b.slice(1)}</option>
+          ))}
+        </select>
+        <select
+          value={txnTypeFilter}
+          onChange={(e) => setTxnTypeFilter(e.target.value)}
+          style={{ minHeight: 44, padding: "8px 12px", width: "auto", minWidth: 110 }}
+        >
+          <option value="">All Types</option>
+          <option value="debit">Expenses</option>
+          <option value="credit">Income/Credits</option>
         </select>
       </div>
 

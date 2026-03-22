@@ -74,10 +74,17 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="label">Total Spent</div>
-          <div className="value">{formatINR(summary?.total)}</div>
+          <div className="label">Spent</div>
+          <div className="value">{formatINR(summary?.expense)}</div>
           <div className="sub">{summary?.count || 0} transactions</div>
         </div>
+        {summary?.income > 0 && (
+          <div className="stat-card">
+            <div className="label">Received</div>
+            <div className="value" style={{ color: "var(--green)" }}>+{formatINR(summary?.income)}</div>
+            <div className="sub">Net: {formatINR(summary?.total)}</div>
+          </div>
+        )}
         {budget && (
           <>
             <div className="stat-card">
