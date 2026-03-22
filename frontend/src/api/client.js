@@ -11,6 +11,9 @@ export const getExpenses = (params = {}) =>
 export const addExpense = (data) =>
   api.post("/api/expenses/", data).then((r) => r.data);
 
+export const updateExpense = (id, updates) =>
+  api.patch(`/api/expenses/${id}`, updates).then((r) => r.data);
+
 export const deleteExpense = (id) =>
   api.delete(`/api/expenses/${id}`).then((r) => r.data);
 

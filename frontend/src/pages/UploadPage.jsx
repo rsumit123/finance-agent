@@ -125,21 +125,34 @@ export default function UploadPage() {
       {/* Result */}
       {result && (
         <div className="card" style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <CheckCircle size={24} color="var(--green)" />
-            <h2 style={{ margin: 0 }}>
-              Imported {result.transactions_found} transactions
-            </h2>
+          {/* Summary bar */}
+          <div style={{
+            display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap"
+          }}>
+            <div style={{
+              flex: 1, minWidth: 120, background: "var(--green-bg)", border: "1px solid var(--green)",
+              borderRadius: 10, padding: "12px 16px", textAlign: "center"
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--green)" }}>{result.transactions_found}</div>
+              <div style={{ fontSize: 12, color: "var(--green)", marginTop: 2 }}>Imported</div>
+            </div>
+            {result.duplicates_skipped > 0 && (
+              <div style={{
+                flex: 1, minWidth: 120, background: "var(--yellow-bg)", border: "1px solid var(--yellow)",
+                borderRadius: 10, padding: "12px 16px", textAlign: "center"
+              }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "var(--yellow)" }}>{result.duplicates_skipped}</div>
+                <div style={{ fontSize: 12, color: "var(--yellow)", marginTop: 2 }}>Duplicates Skipped</div>
+              </div>
+            )}
+            <div style={{
+              flex: 1, minWidth: 120, background: "var(--bg-input)", border: "1px solid var(--border)",
+              borderRadius: 10, padding: "12px 16px", textAlign: "center"
+            }}>
+              <div style={{ fontSize: 13, color: "var(--text-dim)" }}>Detected as</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{result.file_type.replace("_", " ")}</div>
+            </div>
           </div>
-          <p style={{ color: "var(--text-dim)", marginBottom: 8 }}>
-            Detected as: <span className="tag default">{result.file_type}</span>
-          </p>
-          {result.duplicates_skipped > 0 && (
-            <p style={{ color: "var(--yellow)", marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-              <AlertTriangle size={16} />
-              {result.duplicates_skipped} duplicate{result.duplicates_skipped > 1 ? "s" : ""} skipped (already imported)
-            </p>
-          )}
 
           {result.transactions.length > 0 && (
             <table className="responsive-table">

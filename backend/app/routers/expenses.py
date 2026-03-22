@@ -65,6 +65,23 @@ def get_subscriptions(db: Session = Depends(get_db)):
     return detect_subscriptions(db)
 
 
+@router.patch("/{expense_id}", response_model=ExpenseOut)
+def update_expense(expense_id: int, updates: dict, db: Session = Depends(get_db)):
+    """Update specific fields on an expense (e.g. category)."""
+    expense = get_expense(db, expense_id)
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    allowed = {"category", "description", "payment_method"}
+    for key, value in updates.items():
+        if key in allowed:
+            setattr(expense, key, value)
+
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
 @router.delete("/{expense_id}")
 def remove_expense(expense_id: int, db: Session = Depends(get_db)):
     if not delete_expense(db, expense_id):
