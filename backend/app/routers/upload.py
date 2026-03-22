@@ -88,6 +88,37 @@ async def upload_statement(
     )
 
 
+@router.post("/debug")
+async def debug_pdf(
+    file: UploadFile = File(...),
+    password: str = Query(""),
+):
+    """Debug endpoint: returns raw extracted text and tables from a PDF."""
+    import pdfplumber
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    pwd = password or None
+    result = {"pages": []}
+    try:
+        with pdfplumber.open(tmp_path, password=pwd) as pdf:
+            for i, page in enumerate(pdf.pages[:5]):
+                page_data = {"page": i + 1, "tables": [], "text": ""}
+                tables = page.extract_tables()
+                if tables:
+                    for table in tables:
+                        page_data["tables"].append(table[:15])
+                page_data["text"] = (page.extract_text() or "")[:3000]
+                result["pages"].append(page_data)
+    finally:
+        os.unlink(tmp_path)
+
+    return result
+
+
 @router.get("/history")
 def upload_history(db: Session = Depends(get_db)):
     """Get list of previously uploaded statements."""
