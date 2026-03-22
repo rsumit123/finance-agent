@@ -107,19 +107,23 @@ def _get_header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def sync_emails(db: Session) -> dict:
+def sync_emails(db: Session, after_date: str = None, before_date: str = None) -> dict:
     """Fetch new bank alert emails from Gmail and parse into transactions.
 
-    Returns: { imported: int, duplicates: int, emails_scanned: int, error: str|None }
+    Args:
+        after_date: Custom start date (YYYY-MM-DD). Overrides last_sync logic.
+        before_date: Custom end date (YYYY-MM-DD).
+
+    Returns: { imported, duplicates, emails_scanned, alerts_by_bank, date_range, error }
     """
     account = db.query(GmailAccount).first()
     if not account:
-        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "error": "Gmail not connected"}
+        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "alerts_by_bank": [], "date_range": {}, "error": "Gmail not connected"}
 
     try:
         creds = _get_credentials(account)
     except Exception as e:
-        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "error": f"Auth failed: {str(e)}"}
+        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "alerts_by_bank": [], "date_range": {}, "error": f"Auth failed: {str(e)}"}
 
     # Update stored tokens if refreshed
     if creds.token != account.access_token:
@@ -132,14 +136,21 @@ def sync_emails(db: Session) -> dict:
 
     # Build search query
     query = f"({GMAIL_QUERY_SENDERS})"
-    if account.last_sync_at:
-        # Search from 1 day before last sync to catch any missed
-        after_date = (account.last_sync_at - timedelta(days=1)).strftime("%Y/%m/%d")
-        query += f" after:{after_date}"
+    if after_date:
+        # Custom date range
+        query += f" after:{after_date.replace('-', '/')}"
+        query_after = after_date
+    elif account.last_sync_at:
+        query_after = (account.last_sync_at - timedelta(days=1)).strftime("%Y/%m/%d")
+        query += f" after:{query_after}"
     else:
-        # First sync: go back 90 days
-        after_date = (datetime.now() - timedelta(days=90)).strftime("%Y/%m/%d")
-        query += f" after:{after_date}"
+        query_after = (datetime.now() - timedelta(days=90)).strftime("%Y/%m/%d")
+        query += f" after:{query_after}"
+
+    query_before = None
+    if before_date:
+        query += f" before:{before_date.replace('-', '/')}"
+        query_before = before_date
 
     # Fetch message IDs
     try:
@@ -147,13 +158,13 @@ def sync_emails(db: Session) -> dict:
             userId="me", q=query, maxResults=200
         ).execute()
     except Exception as e:
-        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "error": f"Gmail API error: {str(e)}"}
+        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "alerts_by_bank": [], "date_range": {"after": query_after, "before": query_before}, "error": f"Gmail API error: {str(e)}"}
 
     messages = results.get("messages", [])
     if not messages:
         account.last_sync_at = datetime.now()
         db.commit()
-        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "error": None}
+        return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "alerts_by_bank": [], "date_range": {"after": query_after, "before": query_before}, "error": None}
 
     # Fetch and parse each message
     parsed_expenses: list[ExpenseCreate] = []
@@ -219,6 +230,7 @@ def sync_emails(db: Session) -> dict:
         "duplicates": dup_count,
         "emails_scanned": emails_scanned,
         "alerts_by_bank": alerts_by_bank,
+        "date_range": {"after": query_after, "before": query_before},
         "error": None,
     }
 

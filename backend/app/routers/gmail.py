@@ -121,21 +121,43 @@ async def gmail_callback(
 
 @router.get("/status")
 def gmail_status(db: Session = Depends(get_db)):
-    """Check if Gmail is connected."""
+    """Check if Gmail is connected + import summary."""
+    from ..models import Expense
+    from sqlalchemy import func
+
     account = db.query(GmailAccount).first()
     if not account:
-        return {"connected": False, "email": None, "last_sync": None}
+        return {"connected": False, "email": None, "last_sync": None, "import_summary": None}
+
+    # Get import summary from expenses
+    total = db.query(func.count(Expense.id)).scalar() or 0
+    min_date = db.query(func.min(Expense.date)).scalar()
+    max_date = db.query(func.max(Expense.date)).scalar()
+
+    # Counts by source type
+    source_counts = {}
+    rows = db.query(Expense.source, func.count(Expense.id)).group_by(Expense.source).all()
+    for src, cnt in rows:
+        source_counts[src] = cnt
 
     return {
         "connected": True,
         "email": account.email,
         "last_sync": account.last_sync_at.isoformat() if account.last_sync_at else None,
+        "import_summary": {
+            "total_transactions": total,
+            "earliest_date": min_date.isoformat() if min_date else None,
+            "latest_date": max_date.isoformat() if max_date else None,
+            "by_source": source_counts,
+        },
     }
 
 
 @router.post("/sync")
 def gmail_sync(
     full: bool = Query(False, description="Reset last_sync and do a full resync"),
+    after: str = Query("", description="Custom after date (YYYY-MM-DD)"),
+    before: str = Query("", description="Custom before date (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
 ):
     """Sync bank alert emails from Gmail."""
@@ -147,7 +169,7 @@ def gmail_sync(
         account.last_sync_at = None
         db.commit()
 
-    result = sync_emails(db)
+    result = sync_emails(db, after_date=after or None, before_date=before or None)
     if result.get("error"):
         raise HTTPException(status_code=500, detail=result["error"])
 

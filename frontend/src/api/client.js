@@ -63,8 +63,13 @@ export const getGmailStatus = () =>
 export const getGmailAuthUrl = () =>
   api.get("/api/gmail/auth").then((r) => r.data);
 
-export const startGmailSync = (full = false) =>
-  api.post("/api/gmail/sync", null, { params: full ? { full: true } : {} }).then((r) => r.data);
+export const startGmailSync = ({ full = false, after = "", before = "" } = {}) => {
+  const params = {};
+  if (full) params.full = true;
+  if (after) params.after = after;
+  if (before) params.before = before;
+  return api.post("/api/gmail/sync", null, { params }).then((r) => r.data);
+};
 
 export const disconnectGmail = () =>
   api.post("/api/gmail/disconnect").then((r) => r.data);
