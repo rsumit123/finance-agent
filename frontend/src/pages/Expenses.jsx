@@ -25,6 +25,32 @@ const PAYMENT_METHODS = [
   "credit_card", "debit_card", "upi", "cash", "neft", "imps",
 ];
 
+const BANK_COLORS = {
+  hdfc: "#004b87",
+  axis: "#97144d",
+  scapia: "#6366f1",
+  icici: "#f58220",
+  sbi: "#22409a",
+};
+
+function getSourceInfo(source) {
+  if (!source) return { bank: null, type: "unknown", label: "Unknown" };
+  const s = source.toLowerCase();
+  // Extract bank name
+  let bank = null;
+  for (const b of ["hdfc", "axis", "scapia", "icici", "sbi", "kotak"]) {
+    if (s.includes(b)) { bank = b; break; }
+  }
+  // Determine source type
+  if (s.startsWith("email_")) return { bank, type: "gmail", label: bank ? bank.toUpperCase() + " · Gmail" : "Gmail" };
+  if (s.startsWith("stmt_")) return { bank, type: "stmt", label: bank ? bank.toUpperCase() + " · Statement" : "Statement" };
+  if (s === "upi_pdf") return { bank: "phonepe", type: "pdf", label: "PhonePe · PDF" };
+  if (s === "credit_card_pdf") return { bank, type: "pdf", label: bank ? bank.toUpperCase() + " · PDF" : "CC · PDF" };
+  if (s === "bank_pdf") return { bank, type: "pdf", label: bank ? bank.toUpperCase() + " · PDF" : "Bank · PDF" };
+  if (s === "manual") return { bank: null, type: "manual", label: "Manual" };
+  return { bank, type: "other", label: source };
+}
+
 const PAGE_SIZE = 15;
 
 function formatINR(n) {
@@ -288,13 +314,18 @@ export default function Expenses() {
                         {time}
                       </span>
                     )}
-                    <span style={{
-                      fontSize: 10, padding: "1px 6px", borderRadius: 4,
-                      background: e.source.startsWith("email") ? "rgba(99,102,241,0.15)" : e.source.startsWith("stmt_") ? "rgba(99,102,241,0.15)" : e.source === "manual" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)",
-                      color: e.source.startsWith("email") ? "var(--accent)" : e.source.startsWith("stmt_") ? "var(--accent)" : e.source === "manual" ? "var(--green)" : "var(--text-dim)",
-                    }}>
-                      {e.source.startsWith("email_") ? "gmail" : e.source.startsWith("stmt_") ? e.source.replace("stmt_", "").toUpperCase() : e.source === "manual" ? "manual" : e.source.endsWith("_pdf") ? "pdf" : e.source}
-                    </span>
+                    {(() => {
+                      const si = getSourceInfo(e.source);
+                      const bankColor = si.bank ? (BANK_COLORS[si.bank] || "#6b7280") : (si.type === "manual" ? "#22c55e" : "#6b7280");
+                      return (
+                        <span style={{
+                          fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600,
+                          background: bankColor + "22", color: bankColor,
+                        }}>
+                          {si.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
