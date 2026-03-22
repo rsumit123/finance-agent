@@ -1,10 +1,14 @@
 """Gmail OAuth and sync endpoints."""
 
-from datetime import datetime
+import hashlib
+import os
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 
 from ..config import FRONTEND_URL, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REDIRECT_URI
@@ -16,47 +20,80 @@ router = APIRouter(prefix="/api/gmail", tags=["gmail"])
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-
-def _create_flow() -> Flow:
-    """Create OAuth flow from env-based credentials."""
-    if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET:
-        raise HTTPException(status_code=500, detail="Gmail OAuth not configured")
-
-    client_config = {
-        "web": {
-            "client_id": GMAIL_CLIENT_ID,
-            "client_secret": GMAIL_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GMAIL_REDIRECT_URI],
-        }
-    }
-    flow = Flow.from_client_config(client_config, scopes=SCOPES)
-    flow.redirect_uri = GMAIL_REDIRECT_URI
-    return flow
+# In-memory store for code_verifier (single-user app, single server)
+_pending_verifiers: dict[str, str] = {}
 
 
 @router.get("/auth")
 def gmail_auth():
     """Get Google OAuth URL to connect Gmail."""
-    flow = _create_flow()
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent",
+    if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Gmail OAuth not configured")
+
+    # Generate PKCE code verifier and challenge
+    code_verifier = base64url_encode(os.urandom(32))
+    code_challenge = base64url_encode(
+        hashlib.sha256(code_verifier.encode("ascii")).digest()
     )
+
+    # Use a simple state token to link auth and callback
+    state = base64url_encode(os.urandom(16))
+    _pending_verifiers[state] = code_verifier
+
+    params = {
+        "client_id": GMAIL_CLIENT_ID,
+        "redirect_uri": GMAIL_REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
     return {"auth_url": auth_url}
 
 
 @router.get("/callback")
-def gmail_callback(code: str = Query(...), db: Session = Depends(get_db)):
+async def gmail_callback(
+    code: str = Query(...),
+    state: str = Query(""),
+    db: Session = Depends(get_db),
+):
     """OAuth callback — exchange code for tokens and save."""
-    flow = _create_flow()
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Gmail OAuth not configured")
+
+    # Retrieve code verifier
+    code_verifier = _pending_verifiers.pop(state, None)
+    if not code_verifier:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    # Exchange code for tokens
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GMAIL_CLIENT_ID,
+                "client_secret": GMAIL_CLIENT_SECRET,
+                "redirect_uri": GMAIL_REDIRECT_URI,
+                "grant_type": "authorization_code",
+                "code_verifier": code_verifier,
+            },
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail=f"Token exchange failed: {resp.text}")
+
+    token_data = resp.json()
+    access_token = token_data["access_token"]
+    refresh_token = token_data.get("refresh_token", "")
 
     # Get user email
-    from googleapiclient.discovery import build
+    creds = Credentials(token=access_token)
     service = build("gmail", "v1", credentials=creds)
     profile = service.users().getProfile(userId="me").execute()
     email = profile.get("emailAddress", "unknown")
@@ -65,21 +102,20 @@ def gmail_callback(code: str = Query(...), db: Session = Depends(get_db)):
     existing = db.query(GmailAccount).first()
     if existing:
         existing.email = email
-        existing.access_token = creds.token
-        existing.refresh_token = creds.refresh_token or existing.refresh_token
-        existing.token_expiry = creds.expiry
+        existing.access_token = access_token
+        existing.refresh_token = refresh_token or existing.refresh_token
+        existing.token_expiry = None
     else:
         account = GmailAccount(
             email=email,
-            access_token=creds.token,
-            refresh_token=creds.refresh_token or "",
-            token_expiry=creds.expiry,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_expiry=None,
         )
         db.add(account)
 
     db.commit()
 
-    # Redirect back to frontend upload page
     return RedirectResponse(url=f"{FRONTEND_URL}/upload?gmail=connected")
 
 
@@ -117,3 +153,8 @@ def gmail_disconnect(db: Session = Depends(get_db)):
     db.query(GmailAccount).delete()
     db.commit()
     return {"message": "Gmail disconnected"}
+
+
+def base64url_encode(data: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
