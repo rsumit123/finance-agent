@@ -76,6 +76,18 @@ class CategoryBudget(Base):
     limit_amount = Column(Float, nullable=False)
 
 
+class GmailAccount(Base):
+    __tablename__ = "gmail_accounts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=False)
+    token_expiry = Column(DateTime, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class UploadHistory(Base):
     __tablename__ = "upload_history"
 

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import { uploadStatement, getUploadHistory } from "../api/client";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink } from "lucide-react";
+import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail } from "../api/client";
 import { useEffect } from "react";
 
 function formatINR(n) {
@@ -19,8 +19,14 @@ export default function UploadPage() {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const inputRef = useRef();
 
+  // Gmail state
+  const [gmailStatus, setGmailStatus] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
   useEffect(() => {
     getUploadHistory().then(setHistory).catch(() => {});
+    getGmailStatus().then(setGmailStatus).catch(() => {});
   }, [result]);
 
   const handleUpload = async () => {
@@ -48,14 +54,125 @@ export default function UploadPage() {
     }
   };
 
+  const handleConnectGmail = async () => {
+    try {
+      const { auth_url } = await getGmailAuthUrl();
+      window.location.href = auth_url;
+    } catch {
+      setError("Failed to start Gmail connection. Check server config.");
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await startGmailSync();
+      setSyncResult(res);
+      getGmailStatus().then(setGmailStatus).catch(() => {});
+      getUploadHistory().then(setHistory).catch(() => {});
+    } catch (err) {
+      setSyncResult({ error: err.response?.data?.detail || "Sync failed" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await disconnectGmail();
+    setGmailStatus({ connected: false });
+    setSyncResult(null);
+  };
+
   return (
     <div>
       <div className="page-header">
-        <h1>Upload Statement</h1>
-        <p>Upload bank statements, credit card bills, or UPI transaction exports</p>
+        <h1>Import Transactions</h1>
+        <p>Connect Gmail or upload PDF statements</p>
       </div>
 
+      {/* Gmail Integration */}
       <div className="card" style={{ marginBottom: 24 }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Mail size={18} /> Gmail Sync
+        </h2>
+
+        {gmailStatus?.connected ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+              <div style={{
+                background: "var(--green-bg)", border: "1px solid var(--green)",
+                borderRadius: 8, padding: "6px 12px", fontSize: 13, color: "var(--green)",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <CheckCircle size={14} /> {gmailStatus.email}
+              </div>
+              {gmailStatus.last_sync && (
+                <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  Last sync: {new Date(gmailStatus.last_sync).toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={handleSync} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <RefreshCw size={16} className={syncing ? "spin" : ""} />
+                {syncing ? "Syncing..." : "Sync Now"}
+              </button>
+              <button className="secondary" onClick={handleDisconnect} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Unlink size={14} /> Disconnect
+              </button>
+            </div>
+
+            {syncResult && !syncResult.error && (
+              <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+                <div style={{
+                  flex: 1, minWidth: 100, background: "var(--green-bg)", border: "1px solid var(--green)",
+                  borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--green)" }}>{syncResult.imported}</div>
+                  <div style={{ fontSize: 11, color: "var(--green)" }}>Imported</div>
+                </div>
+                {syncResult.duplicates > 0 && (
+                  <div style={{
+                    flex: 1, minWidth: 100, background: "var(--yellow-bg)", border: "1px solid var(--yellow)",
+                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--yellow)" }}>{syncResult.duplicates}</div>
+                    <div style={{ fontSize: 11, color: "var(--yellow)" }}>Duplicates</div>
+                  </div>
+                )}
+                <div style={{
+                  flex: 1, minWidth: 100, background: "var(--bg-input)", border: "1px solid var(--border)",
+                  borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{syncResult.emails_scanned}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Emails Scanned</div>
+                </div>
+              </div>
+            )}
+            {syncResult?.error && (
+              <p style={{ color: "var(--red)", marginTop: 12 }}>{syncResult.error}</p>
+            )}
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <p style={{ color: "var(--text-dim)", marginBottom: 16, fontSize: 14 }}>
+              Connect your Gmail to automatically import transaction alerts from HDFC Bank, Axis Bank, and more.
+              We only read bank alert emails — nothing else.
+            </p>
+            <button onClick={handleConnectGmail} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", fontSize: 15 }}>
+              <Mail size={18} /> Connect Gmail
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* PDF Upload */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <FileText size={18} /> PDF Upload
+        </h2>
         <div
           className={`upload-zone ${dragover ? "dragover" : ""}`}
           onClick={() => inputRef.current?.click()}

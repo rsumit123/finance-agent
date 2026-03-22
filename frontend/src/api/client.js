@@ -52,3 +52,16 @@ export const canIBuy = (amount, category = null) =>
   api
     .post("/api/advisor/can-i-buy", { amount, category })
     .then((r) => r.data);
+
+// Gmail
+export const getGmailStatus = () =>
+  api.get("/api/gmail/status").then((r) => r.data);
+
+export const getGmailAuthUrl = () =>
+  api.get("/api/gmail/auth").then((r) => r.data);
+
+export const startGmailSync = () =>
+  api.post("/api/gmail/sync").then((r) => r.data);
+
+export const disconnectGmail = () =>
+  api.post("/api/gmail/disconnect").then((r) => r.data);
