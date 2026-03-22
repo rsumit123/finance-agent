@@ -53,10 +53,16 @@ def _parse_date(date_str: str) -> Optional[datetime]:
 def _parse_amount(amount_str: str) -> Optional[float]:
     if not amount_str:
         return None
-    cleaned = amount_str.replace(",", "").replace(" ", "").strip()
-    cleaned = re.sub(r"[₹CcDd][Rr]\.?$", "", cleaned).strip()
-    cleaned = cleaned.lstrip("₹C").strip()
+    cleaned = amount_str.strip()
+    # Detect Cr (credit/refund) before stripping
     is_credit = False
+    if re.search(r"\bCr\b", cleaned, re.IGNORECASE):
+        is_credit = True
+    # Strip currency symbols, Dr/Cr suffixes
+    cleaned = cleaned.replace(",", "").replace(" ", "")
+    cleaned = re.sub(r"[Dd][Rr]\.?$", "", cleaned).strip()
+    cleaned = re.sub(r"[Cc][Rr]\.?$", "", cleaned).strip()
+    cleaned = cleaned.lstrip("₹C").strip()
     if cleaned.startswith("(") and cleaned.endswith(")"):
         cleaned = cleaned[1:-1]
         is_credit = True
@@ -76,7 +82,7 @@ def _classify_category(description: str) -> str:
     mapping = {
         "food": ["swiggy", "zomato", "restaurant", "food", "cafe", "pizza", "mcdonald", "domino", "kfc", "starbucks", "chai", "barista"],
         "shopping": ["amazon", "flipkart", "myntra", "ajio", "meesho", "shopping", "mall", "reliance", "asspl"],
-        "entertainment": ["netflix", "hotstar", "spotify", "movie", "pvr", "inox", "bookmyshow", "prime video", "cinepolis"],
+        "entertainment": ["netflix", "hotstar", "spotify", "movie", "pvr", "inox", "bookmyshow", "prime video", "cinepolis", "youtube", "google play"],
         "bills": ["electricity", "water", "gas", "broadband", "jio", "airtel", "vi ", "bsnl", "tata play", "recharge", "finance charges", "late fee"],
         "transport": ["uber", "ola", "metro", "fuel", "petrol", "irctc", "makemytrip", "cleartrip", "auto service"],
         "health": ["hospital", "medical", "pharmacy", "doctor", "apollo", "1mg", "pharmeasy"],
@@ -128,13 +134,24 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
     if not table or len(table) < 2:
         return transactions
 
-    # Check if this is an HDFC-style single-column table
-    # (rows have 1 cell or header mentions "DATE & TIME TRANSACTION")
-    header_text = " ".join(str(cell) for cell in table[0] if cell).lower()
+    # Find the actual header row (may not be row 0 — Axis puts summary in row 0)
+    header_idx = None
+    for idx, row in enumerate(table):
+        row_text = " ".join(str(cell).lower() for cell in row if cell)
+        if "date" in row_text and ("transaction" in row_text or "description" in row_text or "amount" in row_text):
+            header_idx = idx
+            break
 
-    if "date" in header_text and ("transaction" in header_text or "description" in header_text):
-        # This is likely a transaction table
-        for row in table[1:]:
+    if header_idx is None:
+        return transactions
+
+    header = [str(cell).lower().strip() if cell else "" for cell in table[header_idx]]
+
+    # Check if this is an HDFC-style single-column table
+    # (header has all info in one cell like "DATE & TIME TRANSACTION DESCRIPTION AMOUNT")
+    non_empty_header_cells = [c for c in header if c]
+    if len(non_empty_header_cells) <= 2 and any("date" in c and "transaction" in c for c in header):
+        for row in table[header_idx + 1:]:
             cell_text = "\n".join(str(cell) for cell in row if cell)
             parsed = _parse_hdfc_row(cell_text)
             if parsed:
@@ -142,9 +159,8 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
         return transactions
 
     # Standard multi-column table parsing
-    header = [str(cell).lower().strip() if cell else "" for cell in table[0]]
     date_col = _find_col(header, ["date", "transaction date", "txn date"])
-    desc_col = _find_col(header, ["description", "details", "particulars", "merchant"])
+    desc_col = _find_col(header, ["transaction details", "description", "details", "particulars", "merchant"])
     amount_col = _find_col(header, ["amount", "txn amount", "transaction amount", "inr"])
 
     if date_col is None:
@@ -154,7 +170,7 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
     if amount_col is None:
         amount_col = len(header) - 1
 
-    for row in table[1:]:
+    for row in table[header_idx + 1:]:
         if not row or all(not cell for cell in row):
             continue
 
