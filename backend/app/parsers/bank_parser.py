@@ -155,21 +155,25 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
         # Extract description
         description = row_str[desc_col] if desc_col < len(row_str) else ""
 
-        # Extract amount (debit)
+        # Extract amount — try debit first, then credit as negative
         amount = None
+        is_credit = False
         if debit_col is not None and debit_col < len(row_str):
             amount = _parse_amount(row_str[debit_col])
+        if amount is None and credit_col is not None and credit_col < len(row_str):
+            amount = _parse_amount(row_str[credit_col])
+            if amount:
+                is_credit = True
         if amount is None and amount_col is not None and amount_col < len(row_str):
             amount = _parse_amount(row_str[amount_col])
 
         if amount is None or amount <= 0:
-            # Skip credits (income) — we only track expenses
             continue
 
         transactions.append(
             ExpenseCreate(
-                amount=amount,
-                category=_classify_category(description),
+                amount=-amount if is_credit else amount,
+                category="salary" if is_credit and any(kw in description.lower() for kw in ["salary", "sal credit"]) else _classify_category(description),
                 payment_method=_classify_payment_method(description),
                 description=description[:200],
                 date=parsed_date,

@@ -230,7 +230,7 @@ export default function UploadPage() {
             {gmailStatus.last_sync && (
               <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
                 Last sync: {new Date(gmailStatus.last_sync).toLocaleString()}
-                {" · "}Only debits are imported (credits/refunds are excluded)
+                {" · "}Credits shown in green, debits in white
               </div>
             )}
 

@@ -140,10 +140,7 @@ def _parse_phonepe_text(text: str) -> list[ExpenseCreate]:
             txn_type = match.group(3)
             amount_str = match.group(4)
 
-            # Skip credits (received money)
-            if txn_type == "CREDIT":
-                i += 1
-                continue
+            is_credit = txn_type == "CREDIT"
 
             parsed_date = _parse_date(date_str)
             amount = _parse_amount(amount_str)
@@ -169,7 +166,7 @@ def _parse_phonepe_text(text: str) -> list[ExpenseCreate]:
 
                 transactions.append(
                     ExpenseCreate(
-                        amount=amount,
+                        amount=-amount if is_credit else amount,
                         category=_classify_category(description),
                         payment_method="upi",
                         description=description[:200],
@@ -213,10 +210,11 @@ def _parse_upi_table(table: list[list]) -> list[ExpenseCreate]:
 
         description = row_str[desc_col] if desc_col < len(row_str) else ""
 
+        is_credit = False
         if type_col is not None and type_col < len(row_str):
             txn_type = row_str[type_col].lower()
             if any(kw in txn_type for kw in ["credit", "cr", "received"]):
-                continue
+                is_credit = True
 
         amount_str = row_str[amount_col] if amount_col and amount_col < len(row_str) else ""
         amount = _parse_amount(amount_str)
@@ -228,7 +226,7 @@ def _parse_upi_table(table: list[list]) -> list[ExpenseCreate]:
 
         transactions.append(
             ExpenseCreate(
-                amount=amount,
+                amount=-amount if is_credit else amount,
                 category=_classify_category(description),
                 payment_method="upi",
                 description=description[:200],
@@ -264,8 +262,7 @@ def _parse_upi_text_generic(text: str) -> list[ExpenseCreate]:
         if not parsed_date:
             continue
 
-        if re.search(r"\b(credited|received|credit|cr)\b", line, re.IGNORECASE):
-            continue
+        is_line_credit = bool(re.search(r"\b(credited|received|credit|cr)\b", line, re.IGNORECASE))
 
         # Match amounts: ₹150 or ₹1,091.89 or 150.00
         amounts = re.findall(r"₹([\d,]+(?:\.\d{1,2})?)", line)
@@ -289,7 +286,7 @@ def _parse_upi_text_generic(text: str) -> list[ExpenseCreate]:
 
         transactions.append(
             ExpenseCreate(
-                amount=amount,
+                amount=-amount if is_line_credit else amount,
                 category=_classify_category(description),
                 payment_method="upi",
                 description=description[:200],

@@ -331,7 +331,9 @@ export default function Expenses() {
 
                 {/* Right: amount + delete */}
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(e.amount)}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: e.amount < 0 ? "var(--green)" : "var(--text)" }}>
+                    {e.amount < 0 ? "+" + formatINR(Math.abs(e.amount)) : formatINR(e.amount)}
+                  </div>
                   {deleteConfirmId === e.id ? (
                     <button
                       onClick={() => handleDelete(e.id)}

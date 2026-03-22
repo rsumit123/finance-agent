@@ -185,7 +185,7 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
         amount_str = row_str[amount_col] if amount_col < len(row_str) else ""
         amount = _parse_amount(amount_str)
 
-        if amount is None or amount <= 0:
+        if amount is None or amount == 0:
             continue
 
         transactions.append(
@@ -231,7 +231,7 @@ def _parse_hdfc_row(cell_text: str) -> list[ExpenseCreate]:
             pass
 
         amount = _parse_amount(amount_str)
-        if amount is None or amount <= 0:
+        if amount is None or amount == 0:
             continue
 
         # Clean up description: remove trailing +, city names appended without space
@@ -306,7 +306,7 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
         description = desc_match.group(1).strip() if desc_match else rest[:100]
 
         amount = _parse_amount(amounts[-1])
-        if amount is None or amount <= 0:
+        if amount is None or amount == 0:
             continue
 
         transactions.append(

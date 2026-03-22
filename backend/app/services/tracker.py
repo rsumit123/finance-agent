@@ -24,7 +24,7 @@ def _is_duplicate(new: ExpenseCreate, existing: Expense) -> bool:
     # Must match on date (compare date portion only) and amount
     new_date = new.date.date() if hasattr(new.date, 'date') and callable(new.date.date) else new.date
     ex_date = existing.date.date() if hasattr(existing.date, 'date') and callable(existing.date.date) else existing.date
-    if new_date != ex_date or abs(new.amount - existing.amount) > 0.01:
+    if new_date != ex_date or abs(abs(new.amount) - abs(existing.amount)) > 0.01:
         return False
 
     # If both have reference_id (UTR), exact match = definite duplicate

@@ -106,8 +106,34 @@ def parse_bank_email(subject: str, body: str, sender: str, received_at: datetime
 def _parse_hdfc_email(subject: str, body: str, received_at: datetime) -> Optional[ExpenseCreate]:
     """Parse HDFC Bank email alerts (UPI debits and CC transactions)."""
 
-    # Skip credit alerts
-    if HDFC_CREDIT_PATTERN.search(body):
+    # Check if it's a credit
+    is_credit = bool(HDFC_CREDIT_PATTERN.search(body))
+
+    # Try credit pattern first
+    if is_credit:
+        # Parse credit (money received)
+        m = re.search(
+            r"Rs\.?\s?([\d,]+(?:\.\d{1,2})?)\s+is\s+successfully\s+credited\s+to\s+your\s+account\s+\*\*\w+\s+"
+            r"by\s+VPA\s+([\w.@]+)\s+(.+?)\s+on\s+(\d{2}-\d{2}-\d{2,4})\.",
+            body, re.IGNORECASE,
+        )
+        if m:
+            amount = float(m.group(1).replace(",", ""))
+            vpa = m.group(2)
+            name = m.group(3).strip()
+            date_str = m.group(4)
+            txn_date = _parse_date(date_str) or received_at
+            ref_match = re.search(r"UPI\s+transaction\s+reference\s+number\s+is\s+(\d+)", body)
+            ref_id = ref_match.group(1) if ref_match else ""
+            return ExpenseCreate(
+                amount=-amount,
+                category="transfer",
+                payment_method="upi",
+                description=f"{name} ({vpa})"[:200],
+                date=txn_date,
+                source="email_hdfc_bank",
+                reference_id=ref_id,
+            )
         return None
 
     # Try UPI debit pattern
