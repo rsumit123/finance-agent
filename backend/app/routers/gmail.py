@@ -162,8 +162,11 @@ def gmail_sync_statements(db: Session = Depends(get_db)):
 
 
 @router.get("/debug")
-def gmail_debug(db: Session = Depends(get_db)):
-    """Debug: show raw email subjects/senders/body snippets from last sync query."""
+def gmail_debug(
+    q: str = Query("", description="Custom Gmail search query"),
+    db: Session = Depends(get_db),
+):
+    """Debug: show raw email subjects/senders/body snippets."""
     import base64
     import re
     from datetime import datetime, timedelta
@@ -188,9 +191,12 @@ def gmail_debug(db: Session = Depends(get_db)):
 
     service = build("gmail", "v1", credentials=creds)
 
-    from ..services.gmail_sync import GMAIL_QUERY_SENDERS
-    after_date = (datetime.now() - timedelta(days=90)).strftime("%Y/%m/%d")
-    query = f"({GMAIL_QUERY_SENDERS}) after:{after_date}"
+    if q:
+        query = q
+    else:
+        from ..services.gmail_sync import GMAIL_QUERY_SENDERS
+        after_date = (datetime.now() - timedelta(days=90)).strftime("%Y/%m/%d")
+        query = f"({GMAIL_QUERY_SENDERS}) after:{after_date}"
 
     results = service.users().messages().list(userId="me", q=query, maxResults=10).execute()
     messages = results.get("messages", [])
