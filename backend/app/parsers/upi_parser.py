@@ -71,11 +71,11 @@ def _extract_upi_id(text: str) -> str:
     return match.group(0) if match else ""
 
 
-def parse_upi_statement(pdf_path: str) -> list[ExpenseCreate]:
+def parse_upi_statement(pdf_path: str, password: str = None) -> list[ExpenseCreate]:
     """Parse a UPI transaction statement PDF."""
     transactions = []
 
-    with pdfplumber.open(pdf_path) as pdf:
+    with pdfplumber.open(pdf_path, password=password) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
             if tables:

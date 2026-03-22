@@ -28,11 +28,13 @@ export const getBudgetStatus = () =>
   api.get("/api/budget/status").then((r) => r.data);
 
 // Upload
-export const uploadStatement = (file, fileType = "auto") => {
+export const uploadStatement = (file, fileType = "auto", password = "") => {
   const form = new FormData();
   form.append("file", file);
+  const params = { file_type: fileType };
+  if (password) params.password = password;
   return api
-    .post("/api/upload/", form, { params: { file_type: fileType } })
+    .post("/api/upload/", form, { params })
     .then((r) => r.data);
 };
 

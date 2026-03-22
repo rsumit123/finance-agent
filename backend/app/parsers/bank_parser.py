@@ -98,11 +98,11 @@ def _classify_category(description: str) -> str:
     return "other"
 
 
-def parse_bank_statement(pdf_path: str) -> list[ExpenseCreate]:
+def parse_bank_statement(pdf_path: str, password: str = None) -> list[ExpenseCreate]:
     """Parse a bank statement PDF and extract transactions."""
     transactions = []
 
-    with pdfplumber.open(pdf_path) as pdf:
+    with pdfplumber.open(pdf_path, password=password) as pdf:
         for page in pdf.pages:
             # Try table extraction first (most bank statements are tabular)
             tables = page.extract_tables()

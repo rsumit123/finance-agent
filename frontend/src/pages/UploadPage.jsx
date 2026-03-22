@@ -10,6 +10,7 @@ function formatINR(n) {
 export default function UploadPage() {
   const [file, setFile] = useState(null);
   const [fileType, setFileType] = useState("auto");
+  const [password, setPassword] = useState("");
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -27,7 +28,7 @@ export default function UploadPage() {
     setError("");
     setResult(null);
     try {
-      const res = await uploadStatement(file, fileType);
+      const res = await uploadStatement(file, fileType, password);
       setResult(res);
       setFile(null);
     } catch (err) {
@@ -96,6 +97,15 @@ export default function UploadPage() {
               <option value="credit_card">Credit Card Bill</option>
               <option value="upi">UPI Transactions</option>
             </select>
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: 1 }}>
+            <label>PDF Password (if protected)</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Leave blank if none"
+            />
           </div>
           <button
             onClick={handleUpload}

@@ -28,11 +28,17 @@ async def upload_statement(
         pattern="^(auto|bank_statement|credit_card|upi)$",
         description="Statement type. Use 'auto' to auto-detect.",
     ),
+    password: str = Query(
+        "",
+        description="PDF password (for password-protected statements)",
+    ),
     db: Session = Depends(get_db),
 ):
     """Upload a bank/credit card/UPI statement PDF and parse transactions."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    pwd = password or None
 
     # Save uploaded file to temp location
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -42,16 +48,16 @@ async def upload_statement(
 
     try:
         if file_type == "auto":
-            detected_type, parsed = detect_and_parse(tmp_path)
+            detected_type, parsed = detect_and_parse(tmp_path, password=pwd)
         elif file_type == "bank_statement":
             detected_type = "bank_statement"
-            parsed = parse_bank_statement(tmp_path)
+            parsed = parse_bank_statement(tmp_path, password=pwd)
         elif file_type == "credit_card":
             detected_type = "credit_card"
-            parsed = parse_credit_card_statement(tmp_path)
+            parsed = parse_credit_card_statement(tmp_path, password=pwd)
         elif file_type == "upi":
             detected_type = "upi"
-            parsed = parse_upi_statement(tmp_path)
+            parsed = parse_upi_statement(tmp_path, password=pwd)
         else:
             raise HTTPException(status_code=400, detail=f"Unknown file type: {file_type}")
     except Exception as e:

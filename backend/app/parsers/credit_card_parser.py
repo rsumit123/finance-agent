@@ -81,11 +81,11 @@ def _classify_category(description: str) -> str:
     return "other"
 
 
-def parse_credit_card_statement(pdf_path: str) -> list[ExpenseCreate]:
+def parse_credit_card_statement(pdf_path: str, password: str = None) -> list[ExpenseCreate]:
     """Parse a credit card statement PDF and extract transactions."""
     transactions = []
 
-    with pdfplumber.open(pdf_path) as pdf:
+    with pdfplumber.open(pdf_path, password=password) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
             if tables:
