@@ -78,3 +78,6 @@ export const addPassword = (label, password) =>
 
 export const deletePassword = (id) =>
   api.delete(`/api/settings/passwords/${id}`).then((r) => r.data);
+
+export const clearAllData = () =>
+  api.post("/api/settings/clear-data").then((r) => r.data);

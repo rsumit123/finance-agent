@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import PdfPassword
+from ..models import Expense, PdfPassword, UploadHistory
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -49,3 +49,18 @@ def delete_password(password_id: int, db: Session = Depends(get_db)):
     db.delete(pw)
     db.commit()
     return {"message": "Password deleted"}
+
+
+@router.post("/clear-data")
+def clear_all_data(db: Session = Depends(get_db)):
+    """Delete all expenses and upload history. Keeps passwords and Gmail connection."""
+    expense_count = db.query(Expense).count()
+    history_count = db.query(UploadHistory).count()
+    db.query(Expense).delete()
+    db.query(UploadHistory).delete()
+    db.commit()
+    return {
+        "message": "All data cleared",
+        "expenses_deleted": expense_count,
+        "history_deleted": history_count,
+    }

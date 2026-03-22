@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, FileSearch } from "lucide-react";
-import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail, syncStatements, getPasswords, addPassword, deletePassword } from "../api/client";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, FileSearch, AlertOctagon } from "lucide-react";
+import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail, syncStatements, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
 import { useEffect } from "react";
 
 function formatINR(n) {
@@ -105,6 +105,17 @@ export default function UploadPage() {
     setGmailStatus({ connected: false });
     setSyncResult(null);
     setStmtResult(null);
+  };
+
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleClearData = async () => {
+    await clearAllData();
+    setShowClearConfirm(false);
+    setResult(null);
+    setSyncResult(null);
+    setStmtResult(null);
+    getUploadHistory().then(setHistory).catch(() => {});
   };
 
   const handleAddPassword = async () => {
@@ -488,6 +499,39 @@ export default function UploadPage() {
           </table>
         </div>
       )}
+
+      {/* Danger Zone */}
+      <div className="card" style={{ marginTop: 24, borderColor: "var(--red)" }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--red)" }}>
+          <AlertOctagon size={18} /> Danger Zone
+        </h2>
+        {!showClearConfirm ? (
+          <button
+            className="danger"
+            onClick={() => setShowClearConfirm(true)}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <Trash2 size={14} /> Clear All Transaction Data
+          </button>
+        ) : (
+          <div style={{
+            background: "var(--red-bg)", border: "1px solid var(--red)",
+            borderRadius: 10, padding: 16,
+          }}>
+            <p style={{ marginBottom: 12, fontWeight: 600 }}>
+              This will permanently delete all expenses and upload history. PDF passwords and Gmail connection will be kept.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="danger" onClick={handleClearData}>
+                Yes, Delete Everything
+              </button>
+              <button className="secondary" onClick={() => setShowClearConfirm(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
