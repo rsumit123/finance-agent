@@ -1,0 +1,46 @@
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: "http://localhost:8000",
+});
+
+// Expenses
+export const getExpenses = (params = {}) =>
+  api.get("/api/expenses/", { params }).then((r) => r.data);
+
+export const addExpense = (data) =>
+  api.post("/api/expenses/", data).then((r) => r.data);
+
+export const deleteExpense = (id) =>
+  api.delete(`/api/expenses/${id}`).then((r) => r.data);
+
+export const getExpenseSummary = (period = "month") =>
+  api.get("/api/expenses/summary", { params: { period } }).then((r) => r.data);
+
+// Budget
+export const getBudget = () =>
+  api.get("/api/budget/").then((r) => r.data);
+
+export const setBudget = (data) =>
+  api.post("/api/budget/", data).then((r) => r.data);
+
+export const getBudgetStatus = () =>
+  api.get("/api/budget/status").then((r) => r.data);
+
+// Upload
+export const uploadStatement = (file, fileType = "auto") => {
+  const form = new FormData();
+  form.append("file", file);
+  return api
+    .post("/api/upload/", form, { params: { file_type: fileType } })
+    .then((r) => r.data);
+};
+
+export const getUploadHistory = () =>
+  api.get("/api/upload/history").then((r) => r.data);
+
+// Advisor
+export const canIBuy = (amount, category = null) =>
+  api
+    .post("/api/advisor/can-i-buy", { amount, category })
+    .then((r) => r.data);
