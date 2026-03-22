@@ -158,6 +158,7 @@ def sync_emails(db: Session) -> dict:
     # Fetch and parse each message
     parsed_expenses: list[ExpenseCreate] = []
     emails_scanned = 0
+    bank_counts: dict[str, int] = {}  # bank -> count of parsed alerts
 
     for msg_meta in messages:
         try:
@@ -176,7 +177,6 @@ def sync_emails(db: Session) -> dict:
         # Parse received date
         try:
             received_at = parsedate_to_datetime(date_str)
-            # Make naive for consistency
             received_at = received_at.replace(tzinfo=None)
         except Exception:
             received_at = datetime.now()
@@ -185,13 +185,15 @@ def sync_emails(db: Session) -> dict:
         if not body:
             continue
 
-        # Clean body: remove HTML artifacts, extra whitespace
         body = re.sub(r"<[^>]+>", " ", body)
         body = re.sub(r"\s+", " ", body).strip()
 
         expense = parse_bank_email(subject, body, sender, received_at)
         if expense:
             parsed_expenses.append(expense)
+            # Track which bank
+            bank = _detect_bank(sender, subject)
+            bank_counts[bank] = bank_counts.get(bank, 0) + 1
 
     # Dedup and save
     if parsed_expenses:
@@ -206,12 +208,17 @@ def sync_emails(db: Session) -> dict:
     account.last_sync_at = datetime.now()
     db.commit()
 
+    # Build per-bank breakdown
+    alerts_by_bank = [
+        {"bank": bank, "count": count}
+        for bank, count in sorted(bank_counts.items(), key=lambda x: -x[1])
+    ]
+
     return {
         "imported": imported_count,
         "duplicates": dup_count,
         "emails_scanned": emails_scanned,
-        "statements_found": 0,
-        "statement_transactions": 0,
+        "alerts_by_bank": alerts_by_bank,
         "error": None,
     }
 

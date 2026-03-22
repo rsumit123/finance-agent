@@ -179,31 +179,40 @@ export default function UploadPage() {
               </button>
             </div>
 
+            {/* Alert sync results */}
             {syncResult && !syncResult.error && (
-              <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
-                <div style={{
-                  flex: 1, minWidth: 100, background: "var(--green-bg)", border: "1px solid var(--green)",
-                  borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--green)" }}>{syncResult.imported}</div>
-                  <div style={{ fontSize: 11, color: "var(--green)" }}>Imported</div>
+              <div style={{ marginTop: 16, background: "var(--bg-input)", borderRadius: 10, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>Transaction Alerts</span>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{syncResult.emails_scanned} emails scanned</span>
                 </div>
-                {syncResult.duplicates > 0 && (
-                  <div style={{
-                    flex: 1, minWidth: 100, background: "var(--yellow-bg)", border: "1px solid var(--yellow)",
-                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                  }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--yellow)" }}>{syncResult.duplicates}</div>
-                    <div style={{ fontSize: 11, color: "var(--yellow)" }}>Duplicates</div>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div style={{ background: "var(--green-bg)", border: "1px solid var(--green)", borderRadius: 8, padding: "8px 16px", textAlign: "center", flex: 1, minWidth: 80 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--green)" }}>{syncResult.imported}</div>
+                    <div style={{ fontSize: 10, color: "var(--green)" }}>New</div>
+                  </div>
+                  <div style={{ background: "var(--yellow-bg)", border: "1px solid var(--yellow)", borderRadius: 8, padding: "8px 16px", textAlign: "center", flex: 1, minWidth: 80 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--yellow)" }}>{syncResult.duplicates}</div>
+                    <div style={{ fontSize: 10, color: "var(--yellow)" }}>Duplicates</div>
+                  </div>
+                </div>
+
+                {syncResult.alerts_by_bank?.length > 0 && (
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>By Bank</span>
+                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                      {syncResult.alerts_by_bank.map((b, i) => (
+                        <span key={i} style={{
+                          padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                          background: "rgba(99,102,241,0.15)", color: "var(--accent)",
+                        }}>
+                          {b.bank.toUpperCase()} — {b.count}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <div style={{
-                  flex: 1, minWidth: 100, background: "var(--bg-input)", border: "1px solid var(--border)",
-                  borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                }}>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>{syncResult.emails_scanned}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Emails Scanned</div>
-                </div>
               </div>
             )}
             {syncResult?.error && (
@@ -212,55 +221,56 @@ export default function UploadPage() {
 
             {/* Statement sync results */}
             {stmtResult && !stmtResult.error && (
-              <div style={{ marginTop: 16 }}>
-                <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 8 }}>Statement PDFs:</p>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                  <div style={{
-                    flex: 1, minWidth: 100, background: "var(--bg-input)", border: "1px solid var(--border)",
-                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                  }}>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>{stmtResult.statements_found}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>PDFs Found</div>
-                  </div>
-                  <div style={{
-                    flex: 1, minWidth: 100, background: "var(--green-bg)", border: "1px solid var(--green)",
-                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                  }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--green)" }}>{stmtResult.imported}</div>
-                    <div style={{ fontSize: 11, color: "var(--green)" }}>Imported</div>
-                  </div>
-                  {stmtResult.duplicates > 0 && (
-                    <div style={{
-                      flex: 1, minWidth: 100, background: "var(--yellow-bg)", border: "1px solid var(--yellow)",
-                      borderRadius: 10, padding: "10px 14px", textAlign: "center"
-                    }}>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: "var(--yellow)" }}>{stmtResult.duplicates}</div>
-                      <div style={{ fontSize: 11, color: "var(--yellow)" }}>Duplicates</div>
-                    </div>
-                  )}
+              <div style={{ marginTop: 12, background: "var(--bg-input)", borderRadius: 10, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>PDF Statements</span>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{stmtResult.statements_found} PDFs found</span>
                 </div>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div style={{ background: "var(--green-bg)", border: "1px solid var(--green)", borderRadius: 8, padding: "8px 16px", textAlign: "center", flex: 1, minWidth: 80 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--green)" }}>{stmtResult.imported}</div>
+                    <div style={{ fontSize: 10, color: "var(--green)" }}>New</div>
+                  </div>
+                  <div style={{ background: "var(--yellow-bg)", border: "1px solid var(--yellow)", borderRadius: 8, padding: "8px 16px", textAlign: "center", flex: 1, minWidth: 80 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--yellow)" }}>{stmtResult.duplicates}</div>
+                    <div style={{ fontSize: 10, color: "var(--yellow)" }}>Duplicates</div>
+                  </div>
+                </div>
+
                 {stmtResult.statements?.length > 0 && (
-                  <div style={{ fontSize: 13 }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Statements Found</span>
                     {stmtResult.statements.map((s, i) => (
                       <div key={i} style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8, marginBottom: 4,
+                        padding: "8px 10px", borderRadius: 6, marginTop: 6,
+                        background: "var(--bg-card)", border: "1px solid var(--border)",
                       }}>
-                        <span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                           <span style={{
                             fontWeight: 700, textTransform: "uppercase", fontSize: 11,
-                            padding: "2px 8px", borderRadius: 4,
+                            padding: "3px 8px", borderRadius: 4, flexShrink: 0,
                             background: "rgba(99,102,241,0.15)", color: "var(--accent)",
-                            marginRight: 8,
                           }}>
                             {s.bank}
                           </span>
-                          <span style={{ color: "var(--text-dim)", wordBreak: "break-all" }}>{s.filename}</span>
+                          <span style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {s.filename}
+                          </span>
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0, marginLeft: 8 }}>
+                          {s.transactions} txns
                         </span>
-                        <span style={{ fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{s.transactions} txns</span>
                       </div>
                     ))}
                   </div>
+                )}
+
+                {stmtResult.statements_found === 0 && (
+                  <p style={{ fontSize: 13, color: "var(--text-dim)", textAlign: "center" }}>
+                    No statement PDFs found in your email. Banks may not attach PDFs — try manual upload instead.
+                  </p>
                 )}
               </div>
             )}
