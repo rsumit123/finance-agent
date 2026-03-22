@@ -1,11 +1,25 @@
 import { useState, useEffect } from "react";
-import { Trash2, Search, X } from "lucide-react";
+import { Trash2, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { getExpenses, addExpense, deleteExpense, updateExpense } from "../api/client";
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
   "health", "education", "groceries", "rent", "emi", "other",
 ];
+
+const CATEGORY_COLORS = {
+  food: "#f97316",
+  transport: "#3b82f6",
+  shopping: "#8b5cf6",
+  entertainment: "#ec4899",
+  bills: "#ef4444",
+  health: "#22c55e",
+  education: "#06b6d4",
+  groceries: "#14b8a6",
+  rent: "#eab308",
+  emi: "#f43f5e",
+  other: "#6b7280",
+};
 
 const PAYMENT_METHODS = [
   "credit_card", "debit_card", "upi", "cash", "neft", "imps",
@@ -15,6 +29,21 @@ const PAGE_SIZE = 15;
 
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDate();
+  const month = d.toLocaleString("en-IN", { month: "short" });
+  return { day, month };
+}
+
+function formatTime(dateStr) {
+  const d = new Date(dateStr);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  if (h === 0 && m === 0) return null;
+  return d.toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 export default function Expenses() {
@@ -42,37 +71,28 @@ export default function Expenses() {
 
   useEffect(load, [filter.period]);
 
-  // Client-side filtering
   const filtered = allExpenses.filter((e) => {
     if (categoryFilter && e.category !== categoryFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      const match = (e.description || "").toLowerCase().includes(q)
-        || e.category.toLowerCase().includes(q)
-        || e.payment_method.toLowerCase().includes(q);
-      if (!match) return false;
+      return (e.description || "").toLowerCase().includes(q)
+        || e.category.includes(q)
+        || e.payment_method.includes(q);
     }
     return true;
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const pageTotal = paged.reduce((sum, e) => sum + e.amount, 0);
+  const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
 
-  // Reset page when filters change
   useEffect(() => setPage(0), [search, categoryFilter]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.amount || Number(form.amount) <= 0) return;
     await addExpense({ ...form, amount: Number(form.amount), source: "manual" });
-    setForm({
-      amount: "",
-      category: "other",
-      payment_method: "upi",
-      description: "",
-      date: new Date().toISOString().split("T")[0],
-    });
+    setForm({ amount: "", category: "other", payment_method: "upi", description: "", date: new Date().toISOString().split("T")[0] });
     setShowForm(false);
     load();
   };
@@ -84,9 +104,7 @@ export default function Expenses() {
 
   const handleCategoryChange = async (id, newCategory) => {
     await updateExpense(id, { category: newCategory });
-    setAllExpenses((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, category: newCategory } : e))
-    );
+    setAllExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, category: newCategory } : e)));
     setEditingId(null);
   };
 
@@ -95,7 +113,7 @@ export default function Expenses() {
       <div className="page-header page-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>Expenses</h1>
-          <p>{filtered.length} transactions this {filter.period}</p>
+          <p>{filtered.length} transactions &middot; {formatINR(filteredTotal)}</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ Add"}
@@ -103,209 +121,179 @@ export default function Expenses() {
       </div>
 
       {showForm && (
-        <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card" style={{ marginBottom: 20 }}>
           <form onSubmit={handleSubmit}>
             <div className="form-row">
               <div className="form-group">
                 <label>Amount (INR)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  placeholder="0.00"
-                  required
-                />
+                <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" required />
               </div>
               <div className="form-group">
                 <label>Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                />
+                <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
                 <label>Category</label>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c.replace("_", " ")}</option>
-                  ))}
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label>Payment Method</label>
-                <select
-                  value={form.payment_method}
-                  onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
-                >
-                  {PAYMENT_METHODS.map((p) => (
-                    <option key={p} value={p}>{p.replace("_", " ")}</option>
-                  ))}
+                <select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
+                  {PAYMENT_METHODS.map((p) => <option key={p} value={p}>{p.replace("_", " ")}</option>)}
                 </select>
               </div>
             </div>
             <div className="form-group">
               <label>Description</label>
-              <input
-                type="text"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="What was this expense for?"
-              />
+              <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What was this expense for?" />
             </div>
             <button type="submit" style={{ width: "100%" }}>Add Expense</button>
           </form>
         </div>
       )}
 
-      {/* Filters bar */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {["week", "month"].map((p) => (
-          <button
-            key={p}
-            className={filter.period === p ? "" : "secondary"}
-            onClick={() => setFilter({ ...filter, period: p })}
-          >
+          <button key={p} className={filter.period === p ? "" : "secondary"} onClick={() => setFilter({ ...filter, period: p })}>
             This {p.charAt(0).toUpperCase() + p.slice(1)}
           </button>
         ))}
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{ minHeight: 44, padding: "8px 12px", flex: "0 0 auto", width: "auto", minWidth: 120 }}
+          style={{ minHeight: 44, padding: "8px 12px", width: "auto", minWidth: 130 }}
         >
           <option value="">All Categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c.replace("_", " ")}</option>
-          ))}
+          {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
         </select>
       </div>
 
       {/* Search */}
       <div style={{ position: "relative", marginBottom: 16 }}>
         <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-dim)" }} />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search transactions..."
-          style={{ paddingLeft: 36 }}
-        />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search transactions..." style={{ paddingLeft: 36 }} />
         {search && (
-          <button
-            onClick={() => setSearch("")}
-            style={{
-              position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", padding: 4, minHeight: 0, color: "var(--text-dim)"
-            }}
-          >
+          <button onClick={() => setSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 4, minHeight: 0, color: "var(--text-dim)" }}>
             <X size={16} />
           </button>
         )}
       </div>
 
-      <div className="card">
-        {/* Page summary */}
-        {paged.length > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, fontSize: 13, color: "var(--text-dim)" }}>
-            <span>{formatINR(pageTotal)} on this page</span>
-            <span style={{ fontSize: 11 }}>Tap category to edit</span>
+      {/* Transaction list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {paged.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>
+            {search || categoryFilter ? "No matching transactions." : "No expenses yet. Add one or upload a statement!"}
           </div>
-        )}
+        ) : (
+          paged.map((e) => {
+            const { day, month } = formatDate(e.date);
+            const time = formatTime(e.date);
+            const catColor = CATEGORY_COLORS[e.category] || "#6b7280";
 
-        <table className="responsive-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th>Amount</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{ textAlign: "center", color: "var(--text-dim)", padding: 32 }}>
-                  {search || categoryFilter
-                    ? "No matching transactions found."
-                    : "No expenses found. Add one or upload a statement!"}
-                </td>
-              </tr>
-            ) : (
-              paged.map((e) => (
-                <tr key={e.id}>
-                  <td data-label="Date">{e.date}</td>
-                  <td data-label="Description" style={{ wordBreak: "break-word" }}>{e.description || "—"}</td>
-                  <td data-label="Category">
+            return (
+              <div
+                key={e.id}
+                style={{
+                  background: "var(--bg-card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                {/* Date pill */}
+                <div style={{
+                  flexShrink: 0, width: 48, textAlign: "center",
+                  background: "var(--bg-input)", borderRadius: 10, padding: "8px 4px",
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{day}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{month}</div>
+                </div>
+
+                {/* Middle: description + category */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {e.description || "—"}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                     {editingId === e.id ? (
                       <select
                         value={e.category}
                         onChange={(ev) => handleCategoryChange(e.id, ev.target.value)}
                         onBlur={() => setEditingId(null)}
                         autoFocus
-                        style={{ minHeight: 32, padding: "4px 8px", fontSize: 12, width: "auto" }}
+                        style={{ minHeight: 28, padding: "2px 6px", fontSize: 12, width: "auto", borderRadius: 6 }}
                       >
-                        {CATEGORIES.map((c) => (
-                          <option key={c} value={c}>{c.replace("_", " ")}</option>
-                        ))}
+                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     ) : (
                       <span
-                        className="tag default"
                         onClick={() => setEditingId(e.id)}
-                        style={{ cursor: "pointer" }}
-                        title="Click to change category"
+                        style={{
+                          fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
+                          background: catColor + "22", color: catColor, cursor: "pointer",
+                          textTransform: "capitalize",
+                        }}
                       >
                         {e.category}
                       </span>
                     )}
-                    {" "}
-                    <span className="tag default">{e.payment_method.replace("_", " ")}</span>
-                  </td>
-                  <td data-label="Amount" style={{ fontWeight: 600 }}>{formatINR(e.amount)}</td>
-                  <td data-label="">
-                    <button
-                      className="danger"
-                      style={{ padding: "6px 10px", minHeight: 0 }}
-                      onClick={() => handleDelete(e.id)}
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                    <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                      {e.payment_method.replace("_", " ")}
+                    </span>
+                    {time && (
+                      <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {time}
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-        {totalPages > 1 && (
-          <div className="pagination">
-            <button
-              className="secondary"
-              disabled={page === 0}
-              onClick={() => { setPage(page - 1); window.scrollTo(0, 0); }}
-            >
-              Prev
-            </button>
-            <span>{page + 1} / {totalPages}</span>
-            <button
-              className="secondary"
-              disabled={page >= totalPages - 1}
-              onClick={() => { setPage(page + 1); window.scrollTo(0, 0); }}
-            >
-              Next
-            </button>
-          </div>
+                {/* Right: amount + delete */}
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(e.amount)}</div>
+                  <button
+                    onClick={() => handleDelete(e.id)}
+                    style={{
+                      background: "none", border: "none", color: "var(--text-dim)",
+                      padding: 4, minHeight: 0, marginTop: 4, cursor: "pointer",
+                      opacity: 0.5, transition: "opacity 0.15s",
+                    }}
+                    onMouseEnter={(ev) => { ev.currentTarget.style.opacity = 1; ev.currentTarget.style.color = "var(--red)"; }}
+                    onMouseLeave={(ev) => { ev.currentTarget.style.opacity = 0.5; ev.currentTarget.style.color = "var(--text-dim)"; }}
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="pagination" style={{ marginTop: 16, borderTop: "none" }}>
+          <button className="secondary" disabled={page === 0} onClick={() => { setPage(page - 1); window.scrollTo(0, 0); }}>
+            <ChevronLeft size={16} />
+          </button>
+          <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
+            {page + 1} of {totalPages}
+          </span>
+          <button className="secondary" disabled={page >= totalPages - 1} onClick={() => { setPage(page + 1); window.scrollTo(0, 0); }}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

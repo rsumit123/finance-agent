@@ -34,9 +34,9 @@ DATE_PATTERNS = [
 # HDFC single-column format: "21/02/2026| 10:03 AMAZON PAY INDIA PRIVATETBangalore C 302.00 l"
 # Also handles: "21/02/2026| 00:00 PAYZAPPMUMBAI + C 2.00 l"
 HDFC_ROW_PATTERN = re.compile(
-    r"(\d{2}/\d{2}/\d{4})\|\s*\d{2}:\d{2}\s+"  # date|time
-    r"(.+?)\s+"                                   # description (non-greedy)
-    r"[C₹]\s*([\d,]+\.\d{2})\s*"                  # C or ₹ + amount
+    r"(\d{2}/\d{2}/\d{4})\|\s*(\d{2}:\d{2})\s+"  # date|time (capture both)
+    r"(.+?)\s+"                                     # description (non-greedy)
+    r"[C₹]\s*([\d,]+\.\d{2})\s*"                    # C or ₹ + amount
 )
 
 
@@ -194,7 +194,7 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="credit_card_pdf",
             )
         )
@@ -215,12 +215,20 @@ def _parse_hdfc_row(cell_text: str) -> list[ExpenseCreate]:
             continue
 
         date_str = match.group(1)
-        description = match.group(2).strip()
-        amount_str = match.group(3)
+        time_str = match.group(2)
+        description = match.group(3).strip()
+        amount_str = match.group(4)
 
         parsed_date = _parse_date(date_str)
         if not parsed_date:
             continue
+
+        # Attach time
+        try:
+            h, m = map(int, time_str.split(":"))
+            parsed_date = parsed_date.replace(hour=h, minute=m)
+        except (ValueError, AttributeError):
+            pass
 
         amount = _parse_amount(amount_str)
         if amount is None or amount <= 0:
@@ -235,7 +243,7 @@ def _parse_hdfc_row(cell_text: str) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="credit_card_pdf",
             )
         )
@@ -255,12 +263,18 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
         hdfc_match = HDFC_ROW_PATTERN.search(line)
         if hdfc_match:
             date_str = hdfc_match.group(1)
-            description = hdfc_match.group(2).strip()
-            amount_str = hdfc_match.group(3)
+            time_str = hdfc_match.group(2)
+            description = hdfc_match.group(3).strip()
+            amount_str = hdfc_match.group(4)
 
             parsed_date = _parse_date(date_str)
             amount = _parse_amount(amount_str)
             if parsed_date and amount and amount > 0:
+                try:
+                    h, m = map(int, time_str.split(":"))
+                    parsed_date = parsed_date.replace(hour=h, minute=m)
+                except (ValueError, AttributeError):
+                    pass
                 description = re.sub(r"\s*\+\s*$", "", description)
                 transactions.append(
                     ExpenseCreate(
@@ -268,7 +282,7 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
                         category=_classify_category(description),
                         payment_method="credit_card",
                         description=description[:200],
-                        date=parsed_date.date(),
+                        date=parsed_date,
                         source="credit_card_pdf",
                     )
                 )
@@ -301,7 +315,7 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="credit_card_pdf",
             )
         )

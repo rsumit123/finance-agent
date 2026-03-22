@@ -21,8 +21,10 @@ def _normalize_desc(desc: str) -> str:
 
 def _is_duplicate(new: ExpenseCreate, existing: Expense) -> bool:
     """Check if a new expense is a duplicate of an existing one."""
-    # Must match on date and amount
-    if new.date != existing.date or abs(new.amount - existing.amount) > 0.01:
+    # Must match on date (compare date portion only) and amount
+    new_date = new.date.date() if hasattr(new.date, 'date') and callable(new.date.date) else new.date
+    ex_date = existing.date.date() if hasattr(existing.date, 'date') and callable(existing.date.date) else existing.date
+    if new_date != ex_date or abs(new.amount - existing.amount) > 0.01:
         return False
 
     # If both have reference_id (UTR), exact match = definite duplicate
@@ -63,8 +65,8 @@ def create_expenses_bulk_dedup(
     if not items:
         return [], []
 
-    # Get date range of incoming items
-    dates = [item.date for item in items]
+    # Get date range of incoming items (use date portion for range query)
+    dates = [item.date.date() if hasattr(item.date, 'date') and callable(item.date.date) else item.date for item in items]
     min_date = min(dates)
     max_date = max(dates)
 

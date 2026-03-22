@@ -149,14 +149,23 @@ def _parse_phonepe_text(text: str) -> list[ExpenseCreate]:
             amount = _parse_amount(amount_str)
 
             if parsed_date and amount and amount > 0:
-                # Look ahead for UTR number
+                # Look ahead for time and UTR number
                 ref_id = ""
                 for j in range(1, 4):
                     if i + j < len(lines):
-                        utr_match = re.search(r"UTR\s+No\.\s*(\d+)", lines[i + j])
+                        next_line = lines[i + j].strip()
+                        # Extract time: "01:10 pm" or "12:48 pm"
+                        time_match = re.match(r"(\d{1,2}):(\d{2})\s*(am|pm)", next_line, re.IGNORECASE)
+                        if time_match:
+                            h, m = int(time_match.group(1)), int(time_match.group(2))
+                            if time_match.group(3).lower() == "pm" and h != 12:
+                                h += 12
+                            elif time_match.group(3).lower() == "am" and h == 12:
+                                h = 0
+                            parsed_date = parsed_date.replace(hour=h, minute=m)
+                        utr_match = re.search(r"UTR\s+No\.\s*(\d+)", next_line)
                         if utr_match:
                             ref_id = utr_match.group(1)
-                            break
 
                 transactions.append(
                     ExpenseCreate(
@@ -164,7 +173,7 @@ def _parse_phonepe_text(text: str) -> list[ExpenseCreate]:
                         category=_classify_category(description),
                         payment_method="upi",
                         description=description[:200],
-                        date=parsed_date.date(),
+                        date=parsed_date,
                         source="upi_pdf",
                         reference_id=ref_id,
                     )
@@ -223,7 +232,7 @@ def _parse_upi_table(table: list[list]) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method="upi",
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="upi_pdf",
                 reference_id=ref_id or upi_id,
             )
@@ -284,7 +293,7 @@ def _parse_upi_text_generic(text: str) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method="upi",
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="upi_pdf",
                 reference_id=upi_id,
             )

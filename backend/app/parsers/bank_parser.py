@@ -172,7 +172,7 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method=_classify_payment_method(description),
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="bank_pdf",
             )
         )
@@ -220,7 +220,7 @@ def _parse_text_lines(text: str) -> list[ExpenseCreate]:
                 category=_classify_category(description),
                 payment_method=_classify_payment_method(description),
                 description=description[:200],
-                date=parsed_date.date(),
+                date=parsed_date,
                 source="bank_pdf",
             )
         )

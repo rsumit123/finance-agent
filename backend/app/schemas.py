@@ -14,7 +14,7 @@ class ExpenseCreate(BaseModel):
     category: str = "other"
     payment_method: str
     description: str = ""
-    date: date
+    date: datetime
     source: str = "manual"
     reference_id: str = ""
 
@@ -25,7 +25,7 @@ class ExpenseOut(BaseModel):
     category: str
     payment_method: str
     description: str
-    date: date
+    date: datetime
     source: str
     reference_id: str
     created_at: Optional[datetime] = None

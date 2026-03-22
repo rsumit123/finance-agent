@@ -52,7 +52,7 @@ class Expense(Base):
     category = Column(String(50), nullable=False, default=Category.OTHER.value)
     payment_method = Column(String(50), nullable=False)
     description = Column(Text, default="")
-    date = Column(Date, nullable=False)
+    date = Column(DateTime, nullable=False)
     source = Column(String(50), default="manual")  # manual, bank_pdf, credit_card_pdf, upi
     reference_id = Column(String(100), default="")
     created_at = Column(DateTime, server_default=func.now())
