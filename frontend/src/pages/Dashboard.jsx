@@ -8,6 +8,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from "recharts";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions } from "../api/client";
@@ -136,23 +137,31 @@ export default function Dashboard() {
         <div className="card">
           <h2>Spending by Category</h2>
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
                   data={categoryData}
                   cx="50%"
-                  cy="50%"
-                  outerRadius={100}
+                  cy="45%"
+                  outerRadius={80}
                   dataKey="value"
-                  label={({ name, percent }) =>
-                    `${name} (${(percent * 100).toFixed(0)}%)`
-                  }
+                  label={false}
                 >
                   {categoryData.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v) => formatINR(v)} />
+                <Legend
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(value, entry) => {
+                    const item = categoryData.find(d => d.name === value);
+                    return `${value} (${formatINR(item?.value)})`;
+                  }}
+                  wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -164,9 +173,9 @@ export default function Dashboard() {
           <h2>By Payment Method</h2>
           {paymentData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={paymentData}>
-                <XAxis dataKey="name" stroke="var(--text-dim)" fontSize={12} />
-                <YAxis stroke="var(--text-dim)" fontSize={12} />
+              <BarChart data={paymentData} margin={{ left: -20, right: 8 }}>
+                <XAxis dataKey="name" stroke="var(--text-dim)" fontSize={11} tick={{ fill: "var(--text-dim)" }} />
+                <YAxis stroke="var(--text-dim)" fontSize={11} tick={{ fill: "var(--text-dim)" }} width={50} />
                 <Tooltip formatter={(v) => formatINR(v)} />
                 <Bar dataKey="value" fill="var(--accent)" radius={[4, 4, 0, 0]} />
               </BarChart>

@@ -224,7 +224,7 @@ export default function UploadPage() {
             <tbody>
               {history.map((h) => (
                 <tr key={h.id}>
-                  <td data-label="File">{h.filename}</td>
+                  <td data-label="File" style={{ wordBreak: "break-all" }}>{h.filename}</td>
                   <td data-label="Type"><span className="tag default">{h.file_type}</span></td>
                   <td data-label="Transactions">{h.transactions_found}</td>
                   <td data-label="Uploaded">{new Date(h.uploaded_at).toLocaleDateString()}</td>

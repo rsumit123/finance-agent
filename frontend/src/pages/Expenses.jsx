@@ -11,6 +11,8 @@ const PAYMENT_METHODS = [
   "credit_card", "debit_card", "upi", "cash", "neft", "imps",
 ];
 
+const PAGE_SIZE = 15;
+
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 }
@@ -18,6 +20,7 @@ function formatINR(n) {
 export default function Expenses() {
   const [expenses, setExpenses] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [page, setPage] = useState(0);
   const [form, setForm] = useState({
     amount: "",
     category: "other",
@@ -28,7 +31,10 @@ export default function Expenses() {
   const [filter, setFilter] = useState({ period: "month" });
 
   const load = () => {
-    getExpenses({ period: filter.period }).then(setExpenses).catch(() => {});
+    getExpenses({ period: filter.period }).then((data) => {
+      setExpenses(data);
+      setPage(0);
+    }).catch(() => {});
   };
 
   useEffect(load, [filter.period]);
@@ -53,15 +59,18 @@ export default function Expenses() {
     load();
   };
 
+  const totalPages = Math.ceil(expenses.length / PAGE_SIZE);
+  const paged = expenses.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   return (
     <div>
       <div className="page-header page-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1>Expenses</h1>
-          <p>Track and manage your spending</p>
+          <p>{expenses.length} transactions this {filter.period}</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Cancel" : "+ Add Expense"}
+          {showForm ? "Cancel" : "+ Add"}
         </button>
       </div>
 
@@ -122,7 +131,7 @@ export default function Expenses() {
                 placeholder="What was this expense for?"
               />
             </div>
-            <button type="submit">Add Expense</button>
+            <button type="submit" style={{ width: "100%" }}>Add Expense</button>
           </form>
         </div>
       )}
@@ -146,32 +155,32 @@ export default function Expenses() {
               <th>Date</th>
               <th>Description</th>
               <th>Category</th>
-              <th>Payment</th>
-              <th>Source</th>
-              <th style={{ textAlign: "right" }}>Amount</th>
+              <th>Amount</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {expenses.length === 0 ? (
+            {paged.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: "center", color: "var(--text-dim)", padding: 32 }}>
+                <td colSpan={5} style={{ textAlign: "center", color: "var(--text-dim)", padding: 32 }}>
                   No expenses found. Add one or upload a statement!
                 </td>
               </tr>
             ) : (
-              expenses.map((e) => (
+              paged.map((e) => (
                 <tr key={e.id}>
                   <td data-label="Date">{e.date}</td>
                   <td data-label="Description">{e.description || "—"}</td>
-                  <td data-label="Category"><span className="tag default">{e.category}</span></td>
-                  <td data-label="Payment"><span className="tag default">{e.payment_method.replace("_", " ")}</span></td>
-                  <td data-label="Source"><span className="tag default">{e.source}</span></td>
+                  <td data-label="Category">
+                    <span className="tag default">{e.category}</span>
+                    {" "}
+                    <span className="tag default">{e.payment_method.replace("_", " ")}</span>
+                  </td>
                   <td data-label="Amount" style={{ fontWeight: 600 }}>{formatINR(e.amount)}</td>
                   <td data-label="">
                     <button
                       className="danger"
-                      style={{ padding: "4px 8px" }}
+                      style={{ padding: "6px 10px", minHeight: 0 }}
                       onClick={() => handleDelete(e.id)}
                       title="Delete"
                     >
@@ -183,6 +192,26 @@ export default function Expenses() {
             )}
           </tbody>
         </table>
+
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button
+              className="secondary"
+              disabled={page === 0}
+              onClick={() => setPage(page - 1)}
+            >
+              Prev
+            </button>
+            <span>{page + 1} / {totalPages}</span>
+            <button
+              className="secondary"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
