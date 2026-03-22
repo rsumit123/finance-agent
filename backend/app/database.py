@@ -1,9 +1,11 @@
 """SQLite database setup with SQLAlchemy."""
 
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-SQLITE_URL = "sqlite:///./finance.db"
+SQLITE_URL = os.getenv("DATABASE_URL", "sqlite:///./finance.db")
 
 engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
