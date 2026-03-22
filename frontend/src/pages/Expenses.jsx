@@ -78,6 +78,7 @@ export default function Expenses() {
     if (categoryFilter && e.category !== categoryFilter) return false;
     if (sourceFilter) {
       if (sourceFilter === "email" && !e.source.startsWith("email")) return false;
+      if (sourceFilter === "gmail_stmt" && !e.source.startsWith("stmt_")) return false;
       if (sourceFilter === "pdf" && !e.source.endsWith("_pdf")) return false;
       if (sourceFilter === "manual" && e.source !== "manual") return false;
     }
@@ -191,7 +192,8 @@ export default function Expenses() {
           style={{ minHeight: 44, padding: "8px 12px", width: "auto", minWidth: 110 }}
         >
           <option value="">All Sources</option>
-          <option value="email">Gmail</option>
+          <option value="email">Gmail Alerts</option>
+          <option value="gmail_stmt">Gmail Statements</option>
           <option value="pdf">PDF Upload</option>
           <option value="manual">Manual</option>
         </select>
@@ -280,10 +282,10 @@ export default function Expenses() {
                     )}
                     <span style={{
                       fontSize: 10, padding: "1px 6px", borderRadius: 4,
-                      background: e.source.startsWith("email") ? "rgba(99,102,241,0.15)" : e.source === "manual" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)",
-                      color: e.source.startsWith("email") ? "var(--accent)" : e.source === "manual" ? "var(--green)" : "var(--text-dim)",
+                      background: e.source.startsWith("email") ? "rgba(99,102,241,0.15)" : e.source.startsWith("stmt_") ? "rgba(99,102,241,0.15)" : e.source === "manual" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)",
+                      color: e.source.startsWith("email") ? "var(--accent)" : e.source.startsWith("stmt_") ? "var(--accent)" : e.source === "manual" ? "var(--green)" : "var(--text-dim)",
                     }}>
-                      {e.source.startsWith("email") ? "gmail" : e.source === "manual" ? "manual" : "pdf"}
+                      {e.source.startsWith("email_") ? "gmail" : e.source.startsWith("stmt_") ? e.source.replace("stmt_", "").toUpperCase() : e.source === "manual" ? "manual" : e.source.endsWith("_pdf") ? "pdf" : e.source}
                     </span>
                   </div>
                 </div>

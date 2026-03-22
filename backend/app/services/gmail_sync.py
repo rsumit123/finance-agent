@@ -273,6 +273,8 @@ def sync_statements(db: Session) -> dict:
     all_parsed: list[ExpenseCreate] = []
     statements_found = 0
 
+    statements_detail = []  # list of { bank, filename, transactions }
+
     for msg_meta in messages:
         try:
             msg = service.users().messages().get(
@@ -280,6 +282,13 @@ def sync_statements(db: Session) -> dict:
             ).execute()
         except Exception:
             continue
+
+        headers = msg.get("payload", {}).get("headers", [])
+        subject = _get_header(headers, "Subject")
+        sender = _get_header(headers, "From")
+
+        # Detect bank from sender/subject
+        bank = _detect_bank(sender, subject)
 
         # Find PDF attachments
         pdf_parts = _find_pdf_attachments(msg.get("payload", {}))
@@ -321,7 +330,16 @@ def sync_statements(db: Session) -> dict:
 
             if parsed:
                 statements_found += 1
+                # Tag each transaction with bank-specific source
+                source_tag = f"stmt_{bank}" if bank else "credit_card_pdf"
+                for txn in parsed:
+                    txn.source = source_tag
                 all_parsed.extend(parsed)
+                statements_detail.append({
+                    "bank": bank or "unknown",
+                    "filename": filename,
+                    "transactions": len(parsed),
+                })
 
     # Dedup and save
     if all_parsed:
@@ -330,10 +348,33 @@ def sync_statements(db: Session) -> dict:
             "statements_found": statements_found,
             "imported": len(imported),
             "duplicates": len(duplicates),
+            "statements": statements_detail,
             "error": None,
         }
 
-    return {"statements_found": statements_found, "imported": 0, "duplicates": 0, "error": None}
+    return {"statements_found": statements_found, "imported": 0, "duplicates": 0, "statements": [], "error": None}
+
+
+def _detect_bank(sender: str, subject: str) -> str:
+    """Detect bank name from email sender/subject."""
+    text = (sender + " " + subject).lower()
+    if "hdfc" in text:
+        return "hdfc"
+    if "axis" in text:
+        return "axis"
+    if "icici" in text:
+        return "icici"
+    if "sbi" in text:
+        return "sbi"
+    if "kotak" in text:
+        return "kotak"
+    if "idfc" in text:
+        return "idfc"
+    if "yes bank" in text or "yesbank" in text:
+        return "yes_bank"
+    if "bob" in text or "bank of baroda" in text:
+        return "bob"
+    return "unknown"
 
 
 def _find_pdf_attachments(payload: dict) -> list[dict]:

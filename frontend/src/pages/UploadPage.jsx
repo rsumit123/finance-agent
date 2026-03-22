@@ -210,7 +210,7 @@ export default function UploadPage() {
             {stmtResult && !stmtResult.error && (
               <div style={{ marginTop: 16 }}>
                 <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 8 }}>Statement PDFs:</p>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div style={{
                     flex: 1, minWidth: 100, background: "var(--bg-input)", border: "1px solid var(--border)",
                     borderRadius: 10, padding: "10px 14px", textAlign: "center"
@@ -235,6 +235,29 @@ export default function UploadPage() {
                     </div>
                   )}
                 </div>
+                {stmtResult.statements?.length > 0 && (
+                  <div style={{ fontSize: 13 }}>
+                    {stmtResult.statements.map((s, i) => (
+                      <div key={i} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8, marginBottom: 4,
+                      }}>
+                        <span>
+                          <span style={{
+                            fontWeight: 700, textTransform: "uppercase", fontSize: 11,
+                            padding: "2px 8px", borderRadius: 4,
+                            background: "rgba(99,102,241,0.15)", color: "var(--accent)",
+                            marginRight: 8,
+                          }}>
+                            {s.bank}
+                          </span>
+                          <span style={{ color: "var(--text-dim)", wordBreak: "break-all" }}>{s.filename}</span>
+                        </span>
+                        <span style={{ fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{s.transactions} txns</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {stmtResult?.error && (
