@@ -65,3 +65,16 @@ export const startGmailSync = () =>
 
 export const disconnectGmail = () =>
   api.post("/api/gmail/disconnect").then((r) => r.data);
+
+export const syncStatements = () =>
+  api.post("/api/gmail/sync-statements").then((r) => r.data);
+
+// Settings
+export const getPasswords = () =>
+  api.get("/api/settings/passwords").then((r) => r.data);
+
+export const addPassword = (label, password) =>
+  api.post("/api/settings/passwords", { label, password }).then((r) => r.data);
+
+export const deletePassword = (id) =>
+  api.delete(`/api/settings/passwords/${id}`).then((r) => r.data);

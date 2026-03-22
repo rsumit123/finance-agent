@@ -76,6 +76,15 @@ class CategoryBudget(Base):
     limit_amount = Column(Float, nullable=False)
 
 
+class PdfPassword(Base):
+    __tablename__ = "pdf_passwords"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    label = Column(String(100), default="")  # e.g. "HDFC CC", "DOB"
+    password = Column(String(255), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class GmailAccount(Base):
     __tablename__ = "gmail_accounts"
 

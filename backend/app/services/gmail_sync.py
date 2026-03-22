@@ -11,7 +11,8 @@ from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 
 from ..config import GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
-from ..models import GmailAccount
+from ..models import GmailAccount, PdfPassword
+from ..parsers import detect_and_parse, parse_credit_card_statement, parse_bank_statement
 from ..schemas import ExpenseCreate
 from ..services.email_parser import parse_bank_email
 from ..services.tracker import create_expenses_bulk_dedup
@@ -208,5 +209,141 @@ def sync_emails(db: Session) -> dict:
         "imported": imported_count,
         "duplicates": dup_count,
         "emails_scanned": emails_scanned,
+        "statements_found": 0,
+        "statement_transactions": 0,
         "error": None,
     }
+
+
+def sync_statements(db: Session) -> dict:
+    """Find CC/bank statement PDF attachments in Gmail, download and parse them.
+
+    Searches for emails with subjects like 'credit card statement', 'account statement'
+    that have PDF attachments. Downloads each PDF, tries saved passwords, and parses.
+
+    Returns: { statements_found, imported, duplicates, error }
+    """
+    import os
+    import tempfile
+
+    account = db.query(GmailAccount).first()
+    if not account:
+        return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": "Gmail not connected"}
+
+    try:
+        creds = _get_credentials(account)
+    except Exception as e:
+        return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": f"Auth failed: {str(e)}"}
+
+    if creds.token != account.access_token:
+        account.access_token = creds.token
+        if creds.expiry:
+            account.token_expiry = creds.expiry
+        db.commit()
+
+    service = build("gmail", "v1", credentials=creds)
+
+    # Get saved passwords
+    passwords = [pw.password for pw in db.query(PdfPassword).all()]
+    # Always try None (no password) first
+    passwords_to_try = [None] + passwords
+
+    # Search for statement emails with PDF attachments
+    query = (
+        "(subject:\"credit card statement\" OR subject:\"card statement\" "
+        "OR subject:\"account statement\" OR subject:\"bank statement\") "
+        "has:attachment filename:pdf"
+    )
+
+    # Go back 180 days for statements
+    after_date = (datetime.now() - timedelta(days=180)).strftime("%Y/%m/%d")
+    query += f" after:{after_date}"
+
+    try:
+        results = service.users().messages().list(
+            userId="me", q=query, maxResults=50
+        ).execute()
+    except Exception as e:
+        return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": f"Gmail API error: {str(e)}"}
+
+    messages = results.get("messages", [])
+    if not messages:
+        return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": None}
+
+    all_parsed: list[ExpenseCreate] = []
+    statements_found = 0
+
+    for msg_meta in messages:
+        try:
+            msg = service.users().messages().get(
+                userId="me", id=msg_meta["id"], format="full"
+            ).execute()
+        except Exception:
+            continue
+
+        # Find PDF attachments
+        pdf_parts = _find_pdf_attachments(msg.get("payload", {}))
+
+        for part in pdf_parts:
+            attachment_id = part.get("body", {}).get("attachmentId")
+            filename = part.get("filename", "statement.pdf")
+            if not attachment_id:
+                continue
+
+            # Download attachment
+            try:
+                att = service.users().messages().attachments().get(
+                    userId="me", messageId=msg_meta["id"], id=attachment_id
+                ).execute()
+            except Exception:
+                continue
+
+            pdf_data = base64.urlsafe_b64decode(att["data"])
+
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(pdf_data)
+                tmp_path = tmp.name
+
+            # Try parsing with each password
+            parsed = None
+            try:
+                for pwd in passwords_to_try:
+                    try:
+                        _, txns = detect_and_parse(tmp_path, password=pwd)
+                        if txns:
+                            parsed = txns
+                            break
+                    except Exception:
+                        continue
+            finally:
+                os.unlink(tmp_path)
+
+            if parsed:
+                statements_found += 1
+                all_parsed.extend(parsed)
+
+    # Dedup and save
+    if all_parsed:
+        imported, duplicates = create_expenses_bulk_dedup(db, all_parsed)
+        return {
+            "statements_found": statements_found,
+            "imported": len(imported),
+            "duplicates": len(duplicates),
+            "error": None,
+        }
+
+    return {"statements_found": statements_found, "imported": 0, "duplicates": 0, "error": None}
+
+
+def _find_pdf_attachments(payload: dict) -> list[dict]:
+    """Recursively find all PDF attachment parts in a Gmail message payload."""
+    results = []
+    filename = payload.get("filename", "")
+    if filename.lower().endswith(".pdf") and payload.get("body", {}).get("attachmentId"):
+        results.append(payload)
+
+    for part in payload.get("parts", []):
+        results.extend(_find_pdf_attachments(part))
+
+    return results

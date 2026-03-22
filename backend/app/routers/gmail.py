@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..config import FRONTEND_URL, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REDIRECT_URI
 from ..database import get_db
 from ..models import GmailAccount
-from ..services.gmail_sync import sync_emails
+from ..services.gmail_sync import sync_emails, sync_statements
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
 
@@ -141,6 +141,20 @@ def gmail_sync(db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Gmail not connected")
 
     result = sync_emails(db)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return result
+
+
+@router.post("/sync-statements")
+def gmail_sync_statements(db: Session = Depends(get_db)):
+    """Find and parse CC/bank statement PDFs from Gmail attachments."""
+    account = db.query(GmailAccount).first()
+    if not account:
+        raise HTTPException(status_code=400, detail="Gmail not connected")
+
+    result = sync_statements(db)
     if result.get("error"):
         raise HTTPException(status_code=500, detail=result["error"])
 

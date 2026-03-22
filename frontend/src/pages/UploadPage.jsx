@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink } from "lucide-react";
-import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail } from "../api/client";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, FileSearch } from "lucide-react";
+import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail, syncStatements, getPasswords, addPassword, deletePassword } from "../api/client";
 import { useEffect } from "react";
 
 function formatINR(n) {
@@ -23,10 +23,18 @@ export default function UploadPage() {
   const [gmailStatus, setGmailStatus] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [syncingStatements, setSyncingStatements] = useState(false);
+  const [stmtResult, setStmtResult] = useState(null);
+
+  // Password state
+  const [passwords, setPasswords] = useState([]);
+  const [newPwLabel, setNewPwLabel] = useState("");
+  const [newPwValue, setNewPwValue] = useState("");
 
   useEffect(() => {
     getUploadHistory().then(setHistory).catch(() => {});
     getGmailStatus().then(setGmailStatus).catch(() => {});
+    getPasswords().then(setPasswords).catch(() => {});
   }, [result]);
 
   const handleUpload = async () => {
@@ -78,10 +86,38 @@ export default function UploadPage() {
     }
   };
 
+  const handleSyncStatements = async () => {
+    setSyncingStatements(true);
+    setStmtResult(null);
+    try {
+      const res = await syncStatements();
+      setStmtResult(res);
+      getUploadHistory().then(setHistory).catch(() => {});
+    } catch (err) {
+      setStmtResult({ error: err.response?.data?.detail || "Statement sync failed" });
+    } finally {
+      setSyncingStatements(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     await disconnectGmail();
     setGmailStatus({ connected: false });
     setSyncResult(null);
+    setStmtResult(null);
+  };
+
+  const handleAddPassword = async () => {
+    if (!newPwValue) return;
+    await addPassword(newPwLabel || "Untitled", newPwValue);
+    setNewPwLabel("");
+    setNewPwValue("");
+    getPasswords().then(setPasswords).catch(() => {});
+  };
+
+  const handleDeletePassword = async (id) => {
+    await deletePassword(id);
+    getPasswords().then(setPasswords).catch(() => {});
   };
 
   return (
@@ -116,8 +152,12 @@ export default function UploadPage() {
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button onClick={handleSync} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <RefreshCw size={16} className={syncing ? "spin" : ""} />
-                {syncing ? "Syncing..." : "Sync Now"}
+                <RefreshCw size={16} />
+                {syncing ? "Syncing..." : "Sync Alerts"}
+              </button>
+              <button onClick={handleSyncStatements} disabled={syncingStatements} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <FileSearch size={16} />
+                {syncingStatements ? "Scanning..." : "Find Statements"}
               </button>
               <button className="secondary" onClick={handleDisconnect} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Unlink size={14} /> Disconnect
@@ -154,6 +194,41 @@ export default function UploadPage() {
             {syncResult?.error && (
               <p style={{ color: "var(--red)", marginTop: 12 }}>{syncResult.error}</p>
             )}
+
+            {/* Statement sync results */}
+            {stmtResult && !stmtResult.error && (
+              <div style={{ marginTop: 16 }}>
+                <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 8 }}>Statement PDFs:</p>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{
+                    flex: 1, minWidth: 100, background: "var(--bg-input)", border: "1px solid var(--border)",
+                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 20, fontWeight: 700 }}>{stmtResult.statements_found}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>PDFs Found</div>
+                  </div>
+                  <div style={{
+                    flex: 1, minWidth: 100, background: "var(--green-bg)", border: "1px solid var(--green)",
+                    borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--green)" }}>{stmtResult.imported}</div>
+                    <div style={{ fontSize: 11, color: "var(--green)" }}>Imported</div>
+                  </div>
+                  {stmtResult.duplicates > 0 && (
+                    <div style={{
+                      flex: 1, minWidth: 100, background: "var(--yellow-bg)", border: "1px solid var(--yellow)",
+                      borderRadius: 10, padding: "10px 14px", textAlign: "center"
+                    }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "var(--yellow)" }}>{stmtResult.duplicates}</div>
+                      <div style={{ fontSize: 11, color: "var(--yellow)" }}>Duplicates</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {stmtResult?.error && (
+              <p style={{ color: "var(--red)", marginTop: 12 }}>{stmtResult.error}</p>
+            )}
           </div>
         ) : (
           <div style={{ textAlign: "center", padding: "20px 0" }}>
@@ -166,6 +241,55 @@ export default function UploadPage() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* PDF Passwords */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Key size={18} /> PDF Passwords
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 12 }}>
+          Indian bank statements are password-protected. Save your passwords here — they'll be used for both manual uploads and Gmail statement sync.
+        </p>
+
+        {passwords.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            {passwords.map((pw) => (
+              <div key={pw.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8, marginBottom: 6,
+              }}>
+                <span style={{ fontSize: 14 }}>{pw.label}</span>
+                <button
+                  onClick={() => handleDeletePassword(pw.id)}
+                  style={{ background: "none", border: "none", color: "var(--text-dim)", padding: 4, minHeight: 0, cursor: "pointer" }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            value={newPwLabel}
+            onChange={(e) => setNewPwLabel(e.target.value)}
+            placeholder="Label (e.g. HDFC CC)"
+            style={{ flex: 1, minWidth: 100 }}
+          />
+          <input
+            type="password"
+            value={newPwValue}
+            onChange={(e) => setNewPwValue(e.target.value)}
+            placeholder="Password"
+            style={{ flex: 1, minWidth: 100 }}
+          />
+          <button onClick={handleAddPassword} disabled={!newPwValue} style={{ whiteSpace: "nowrap" }}>
+            + Add
+          </button>
+        </div>
       </div>
 
       {/* PDF Upload */}
