@@ -52,20 +52,49 @@ def _get_credentials(account: GmailAccount) -> Credentials:
 
 
 def _extract_email_body(payload: dict) -> str:
-    """Extract plain text body from Gmail message payload."""
-    body = ""
+    """Extract text body from Gmail message payload.
 
-    if "parts" in payload:
-        for part in payload["parts"]:
-            if part["mimeType"] == "text/plain" and "data" in part.get("body", {}):
-                body += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
-            elif "parts" in part:
-                # Nested multipart
-                body += _extract_email_body(part)
-    elif "body" in payload and "data" in payload["body"]:
-        body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+    Tries text/plain first, falls back to text/html (stripped of tags).
+    Many bank alert emails are HTML-only.
+    """
+    plain = ""
+    html = ""
 
-    return body
+    def _walk(part: dict):
+        nonlocal plain, html
+        mime = part.get("mimeType", "")
+        data = part.get("body", {}).get("data", "")
+
+        if mime == "text/plain" and data:
+            plain += base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+        elif mime == "text/html" and data:
+            html += base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+
+        for sub in part.get("parts", []):
+            _walk(sub)
+
+    _walk(payload)
+
+    if plain:
+        return plain
+
+    if html:
+        # Strip HTML tags to get readable text
+        text = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"&nbsp;", " ", text)
+        text = re.sub(r"&amp;", "&", text)
+        text = re.sub(r"&lt;", "<", text)
+        text = re.sub(r"&gt;", ">", text)
+        text = re.sub(r"&rsquo;|&lsquo;|&#39;", "'", text)
+        text = re.sub(r"&quot;", '"', text)
+        text = re.sub(r"&#\d+;", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    return ""
 
 
 def _get_header(headers: list[dict], name: str) -> str:
