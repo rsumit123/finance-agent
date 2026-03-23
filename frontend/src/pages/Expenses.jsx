@@ -98,7 +98,7 @@ export default function Expenses() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(navState.category || "");
-  const [bankFilter, setBankFilter] = useState("");
+  const [bankFilter, setBankFilter] = useState(navState.bank || "");
   const [txnTypeFilter, setTxnTypeFilter] = useState(navState.txnType || "");
   const [form, setForm] = useState({
     amount: "", category: "other", payment_method: "upi",

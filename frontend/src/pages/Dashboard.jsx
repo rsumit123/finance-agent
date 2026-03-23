@@ -318,12 +318,18 @@ export default function Dashboard() {
           <h2>Credit Card Balances</h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {Object.entries(networth.cc_outstanding || {}).map(([bank, info]) => (
-              <div key={bank} style={{
-                flex: "1 1 auto", minWidth: 120,
-                background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
-                border: `1px solid ${info.outstanding > 0 ? "var(--red)" : "var(--green)"}`,
-                borderRadius: 10, padding: "12px 14px", textAlign: "center",
-              }}>
+              <div key={bank}
+                onClick={() => navigate("/expenses", { state: { bank: bank.toLowerCase(), mode: "month", year: selectedYear, month: selectedMonth, weekOffset } })}
+                style={{
+                  flex: "1 1 auto", minWidth: 120, cursor: "pointer",
+                  background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
+                  border: `1px solid ${info.outstanding > 0 ? "var(--red)" : "var(--green)"}`,
+                  borderRadius: 10, padding: "12px 14px", textAlign: "center",
+                  transition: "opacity 0.15s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = 0.8}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = 1}
+              >
                 <div style={{ fontSize: 18, fontWeight: 700, color: info.outstanding > 0 ? "var(--red)" : "var(--green)" }}>
                   {info.outstanding > 0 ? formatINR(info.outstanding) : "Paid up"}
                 </div>
@@ -333,6 +339,9 @@ export default function Dashboard() {
                     {formatINR(info.charges)} charged · {formatINR(info.payments)} paid
                   </div>
                 )}
+                <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                  View transactions <ChevronRight size={10} />
+                </div>
               </div>
             ))}
           </div>
