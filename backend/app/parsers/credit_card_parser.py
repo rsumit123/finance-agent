@@ -11,6 +11,7 @@ from typing import Optional
 import pdfplumber
 
 from ..schemas import ExpenseCreate
+from .categorizer import classify_category
 
 DATE_FORMATS = [
     "%d/%m/%Y",
@@ -191,7 +192,7 @@ def _parse_cc_table(table: list[list]) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
                 date=parsed_date,
@@ -240,7 +241,7 @@ def _parse_hdfc_row(cell_text: str) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
                 date=parsed_date,
@@ -279,7 +280,7 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
                 transactions.append(
                     ExpenseCreate(
                         amount=amount,
-                        category=_classify_category(description),
+                        category=classify_category(description),
                         payment_method="credit_card",
                         description=description[:200],
                         date=parsed_date,
@@ -312,7 +313,7 @@ def _parse_cc_text(text: str) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method="credit_card",
                 description=description[:200],
                 date=parsed_date,

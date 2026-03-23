@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from ..schemas import ExpenseCreate
+from ..parsers.categorizer import classify_category
 
 
 def _classify_category(description: str) -> str:
@@ -150,7 +151,7 @@ def _parse_hdfc_email(subject: str, body: str, received_at: datetime) -> Optiona
 
         return ExpenseCreate(
             amount=amount,
-            category=_classify_category(description),
+            category=classify_category(description),
             payment_method="upi",
             description=description[:200],
             date=txn_date,
@@ -166,7 +167,7 @@ def _parse_hdfc_email(subject: str, body: str, received_at: datetime) -> Optiona
 
         return ExpenseCreate(
             amount=amount,
-            category=_classify_category(merchant),
+            category=classify_category(merchant),
             payment_method="credit_card",
             description=merchant[:200],
             date=received_at,
@@ -218,7 +219,7 @@ def _parse_scapia_email(subject: str, body: str, received_at: datetime) -> Optio
 
     return ExpenseCreate(
         amount=amount,
-        category=_classify_category(merchant),
+        category=classify_category(merchant),
         payment_method="credit_card",
         description=merchant[:200],
         date=txn_date,
@@ -243,7 +244,7 @@ def _parse_axis_email(subject: str, body: str, received_at: datetime) -> Optiona
 
         return ExpenseCreate(
             amount=amount,
-            category=_classify_category(merchant),
+            category=classify_category(merchant),
             payment_method="credit_card",
             description=merchant[:200],
             date=txn_date,

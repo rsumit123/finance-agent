@@ -11,6 +11,7 @@ from typing import Optional
 import pdfplumber
 
 from ..schemas import ExpenseCreate
+from .categorizer import classify_category
 
 DATE_FORMATS = [
     "%d/%m/%Y",
@@ -167,7 +168,7 @@ def _parse_phonepe_text(text: str) -> list[ExpenseCreate]:
                 transactions.append(
                     ExpenseCreate(
                         amount=-amount if is_credit else amount,
-                        category=_classify_category(description),
+                        category=classify_category(description),
                         payment_method="upi",
                         description=description[:200],
                         date=parsed_date,
@@ -227,7 +228,7 @@ def _parse_upi_table(table: list[list]) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=-amount if is_credit else amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method="upi",
                 description=description[:200],
                 date=parsed_date,
@@ -287,7 +288,7 @@ def _parse_upi_text_generic(text: str) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=-amount if is_line_credit else amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method="upi",
                 description=description[:200],
                 date=parsed_date,

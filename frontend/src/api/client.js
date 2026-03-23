@@ -114,3 +114,6 @@ export const deletePassword = (id) =>
 
 export const clearAllData = () =>
   api.post("/api/settings/clear-data").then((r) => r.data);
+
+export const recategorize = (userName = "") =>
+  api.post("/api/settings/recategorize", null, { params: { user_name: userName } }).then((r) => r.data);

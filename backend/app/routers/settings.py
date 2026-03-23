@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Expense, PdfPassword, UploadHistory
+from ..parsers.categorizer import classify_category
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -49,6 +50,30 @@ def delete_password(password_id: int, db: Session = Depends(get_db)):
     db.delete(pw)
     db.commit()
     return {"message": "Password deleted"}
+
+
+@router.post("/recategorize")
+def recategorize_expenses(
+    user_name: str = Query("", description="User name for self-transfer detection"),
+    db: Session = Depends(get_db),
+):
+    """Re-categorize all 'other' transactions using improved categorizer."""
+    others = db.query(Expense).filter(Expense.category == "other").all()
+    fixed = 0
+    changes = {}
+    for e in others:
+        new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name)
+        if new_cat != "other":
+            e.category = new_cat
+            fixed += 1
+            changes[new_cat] = changes.get(new_cat, 0) + 1
+    db.commit()
+    return {
+        "total_others": len(others),
+        "recategorized": fixed,
+        "remaining_other": len(others) - fixed,
+        "changes": changes,
+    }
 
 
 @router.post("/clear-data")

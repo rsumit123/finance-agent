@@ -1,0 +1,125 @@
+"""Shared transaction categorization logic.
+
+Used by all parsers (bank, CC, UPI, email) for consistent categorization.
+"""
+
+import re
+
+# Category keywords — ordered by specificity (more specific first)
+CATEGORY_KEYWORDS = {
+    "food": [
+        "swiggy", "zomato", "restaurant", "food", "cafe", "pizza", "mcdonald",
+        "domino", "kfc", "starbucks", "chai", "barista", "hotel", "madrasi",
+        "dhaba", "biryani", "burger", "subway", "haldiram", "barbeque",
+        "kitchen", "bakery", "dine", "eat", "meal",
+    ],
+    "groceries": [
+        "bigbasket", "dmart", "blinkit", "zepto", "instamart", "grocery",
+        "supermarket", "smart bazaar", "flour mill", "reliance fresh",
+        "more supermarket", "nature basket", "spencers", "nursery",
+    ],
+    "transport": [
+        "uber", "ola", "rapido", "metro", "fuel", "petrol", "diesel",
+        "irctc", "indian railways", "makemytrip", "cleartrip", "goibibo",
+        "agoda", "booking.com", "yatra", "redbus", "auto service",
+        "automobiles", "service station", "parking", "toll", "fastag",
+        "airlines", "indigo", "air india", "vistara", "spicejet",
+    ],
+    "entertainment": [
+        "netflix", "hotstar", "spotify", "movie", "pvr", "inox",
+        "bookmyshow", "prime video", "cinepolis", "youtube", "google play",
+        "cinema", "theatre", "disney", "zee5", "sonyliv", "jiocinema",
+    ],
+    "bills": [
+        "electricity", "water bill", "gas bill", "broadband", "jio",
+        "airtel", "vi ", "bsnl", "tata play", "recharge", "prepaid",
+        "postpaid", "finance charges", "late fee", "gst", "igst", "cgst",
+        "foreign currency transaction fee", "dcc markup", "annual fee",
+        "aws", "google cloud", "azure", "cursor", "openai", "chatgpt",
+        "claude", "anthropic", "github", "digitalocean", "heroku",
+        "cloudflare", "vercel", "netlify", "notion", "slack",
+        "insurance", "lic", "premium",
+    ],
+    "shopping": [
+        "amazon", "flipkart", "myntra", "ajio", "meesho", "shopping",
+        "mall", "reliance", "asspl", "nykaa", "tata cliq", "snapdeal",
+        "paytm mall", "croma", "vijay sales",
+    ],
+    "health": [
+        "hospital", "medical", "pharmacy", "doctor", "apollo", "1mg",
+        "pharmeasy", "medplus", "clinic", "dental", "lab", "diagnostic",
+        "pathology", "fortis", "max hospital",
+    ],
+    "education": [
+        "school", "college", "course", "udemy", "coursera", "unacademy",
+        "byju", "vedantu", "upgrad", "tuition", "coaching",
+    ],
+    "rent": [
+        "rent", "landlord", "house rent", "pg ", "hostel",
+    ],
+    "emi": [
+        "emi", "loan", "instalment", "equated monthly",
+    ],
+    "atm": [
+        "atm", "cash withdrawal", "cash count", "cwdr", "iccw atm",
+        "atl/", "cash deposit",
+    ],
+    "salary": [
+        "salary", "sal credit", "payroll",
+    ],
+    "transfer": [
+        "transfer to self", "own account", "fund transfer",
+        "creditcard payment", "credit card payment", "mb payment",
+        "cred club", "cred pay", "payzapp",
+    ],
+}
+
+# Known person name patterns — these are UPI transfers to people
+# We detect them by checking if the description is just a person's name
+# (no merchant keywords matched)
+PERSON_NAME_PATTERN = re.compile(
+    r"^(?:mr\.?|mrs\.?|ms\.?|shri\.?)?\s*[A-Z][a-z]+ (?:[A-Z][a-z]+ )*(?:S/?O|D/?O|W/?O)?\s*",
+    re.IGNORECASE,
+)
+
+
+def classify_category(description: str, source: str = "", user_name: str = "") -> str:
+    """Classify a transaction into a category based on description.
+
+    Args:
+        description: Transaction description/merchant name
+        source: Source tag (for context)
+        user_name: User's name for self-transfer detection
+    """
+    if not description:
+        return "other"
+
+    desc_lower = description.lower().strip()
+
+    # Self-transfer detection
+    if user_name:
+        name_lower = user_name.lower()
+        name_parts = name_lower.split()
+        if len(name_parts) >= 2 and all(part in desc_lower for part in name_parts):
+            return "transfer"
+
+    # Check against keyword categories
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(kw in desc_lower for kw in keywords):
+            return category
+
+    # CC-specific: payment to card is a transfer
+    if "credit" in (source or "").lower() or "cc" in (source or "").lower():
+        if any(kw in desc_lower for kw in ["payment", "mb payment"]):
+            return "transfer"
+
+    # If description looks like just a person's name (UPI transfer)
+    # and no keywords matched, it's likely a transfer
+    desc_clean = re.sub(r"\(.*?\)", "", description).strip()
+    words = desc_clean.split()
+    if 1 < len(words) <= 4:
+        # All words start with uppercase and are short — likely a name
+        if all(w[0].isupper() and len(w) <= 15 for w in words if w):
+            return "transfer"
+
+    return "other"

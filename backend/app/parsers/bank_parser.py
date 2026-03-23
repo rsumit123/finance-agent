@@ -11,6 +11,7 @@ from typing import Optional
 import pdfplumber
 
 from ..schemas import ExpenseCreate
+from .categorizer import classify_category
 
 # Common date formats found in Indian bank statements
 DATE_PATTERNS = [
@@ -191,7 +192,7 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=-amount if is_credit else amount,
-                category="salary" if is_credit and any(kw in description.lower() for kw in ["salary", "sal credit"]) else _classify_category(description),
+                category="salary" if is_credit and any(kw in description.lower() for kw in ["salary", "sal credit"]) else classify_category(description),
                 payment_method=_classify_payment_method(description),
                 description=description[:200],
                 date=parsed_date,
@@ -239,7 +240,7 @@ def _parse_text_lines(text: str) -> list[ExpenseCreate]:
         transactions.append(
             ExpenseCreate(
                 amount=amount,
-                category=_classify_category(description),
+                category=classify_category(description),
                 payment_method=_classify_payment_method(description),
                 description=description[:200],
                 date=parsed_date,
