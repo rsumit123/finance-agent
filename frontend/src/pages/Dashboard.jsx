@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Mail, Upload, ArrowRight } from "lucide-react";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights } from "../api/client";
 
 const COLORS = [
@@ -134,6 +134,48 @@ export default function Dashboard() {
       <div>
         <div className="page-header"><h1>Dashboard</h1></div>
         <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+      </div>
+    );
+  }
+
+  // Onboarding: no data yet
+  const hasData = summary && summary.count > 0;
+  if (!hasData) {
+    return (
+      <div>
+        <div className="page-header"><h1>Dashboard</h1></div>
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Welcome to MoneyFlow!</h2>
+          <p style={{ color: "var(--text-dim)", marginBottom: 24, maxWidth: 400, margin: "0 auto 24px", lineHeight: 1.6 }}>
+            Get started by connecting your Gmail to automatically import transactions from your bank alerts and credit card statements.
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
+            <button
+              onClick={() => navigate("/upload")}
+              style={{ width: "100%", padding: "14px 20px", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            >
+              <Mail size={18} /> Connect Gmail <ArrowRight size={16} />
+            </button>
+            <button
+              className="secondary"
+              onClick={() => navigate("/upload")}
+              style={{ width: "100%", padding: "12px 20px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            >
+              <Upload size={16} /> Or upload a PDF statement
+            </button>
+          </div>
+
+          <div style={{ marginTop: 32, display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+            {["HDFC", "Axis", "ICICI", "Kotak", "Scapia", "SBI"].map((bank) => (
+              <span key={bank} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: "rgba(99,102,241,0.1)", color: "var(--accent)" }}>
+                {bank}
+              </span>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>Supported banks</p>
+        </div>
       </div>
     );
   }
