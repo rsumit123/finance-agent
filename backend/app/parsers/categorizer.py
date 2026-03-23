@@ -29,6 +29,7 @@ CATEGORY_KEYWORDS = {
         "netflix", "hotstar", "spotify", "movie", "pvr", "inox",
         "bookmyshow", "prime video", "cinepolis", "youtube", "google play",
         "cinema", "theatre", "disney", "zee5", "sonyliv", "jiocinema",
+        "bigtree entertainment", "apple india", "apple.com",
     ],
     "bills": [
         "electricity", "water bill", "gas bill", "broadband", "jio",
@@ -38,7 +39,8 @@ CATEGORY_KEYWORDS = {
         "aws", "google cloud", "azure", "cursor", "openai", "chatgpt",
         "claude", "anthropic", "github", "digitalocean", "heroku",
         "cloudflare", "vercel", "netlify", "notion", "slack",
-        "insurance", "lic", "premium",
+        "insurance", "lic", "premium", "openrouter", "google ",
+        "federal bank", "salon", "jawed habib", "parlour", "parlor",
     ],
     "shopping": [
         "amazon", "flipkart", "myntra", "ajio", "meesho", "shopping",
@@ -112,6 +114,16 @@ def classify_category(description: str, source: str = "", user_name: str = "") -
     if "credit" in (source or "").lower() or "cc" in (source or "").lower():
         if any(kw in desc_lower for kw in ["payment", "mb payment"]):
             return "transfer"
+
+    # Kotak UPI format: "UPI/PersonName/RefId/..." — extract name
+    upi_match = re.match(r"UPI/([^/]+)/\d+/", description)
+    if upi_match:
+        name_part = upi_match.group(1).strip()
+        # Check if the name part matches any merchant keywords
+        name_cat = classify_category(name_part, source=source)
+        if name_cat != "other":
+            return name_cat
+        return "transfer"  # Person name via UPI
 
     # If description looks like just a person's name (UPI transfer)
     # and no keywords matched, it's likely a transfer
