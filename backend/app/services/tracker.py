@@ -206,17 +206,21 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
         .scalar()
     )
 
-    # Split income (negative amounts) and expenses (positive)
-    income = float(
-        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.date >= start_date, Expense.date <= end_date, Expense.amount < 0)
-        .scalar()
+    # Split income vs expenses
+    # Income = negative amounts from bank sources only (not CC payments/refunds)
+    # CC credits (payments, refunds) are NOT income
+    all_in_range = (
+        db.query(Expense)
+        .filter(Expense.date >= start_date, Expense.date <= end_date)
+        .all()
     )
-    expense = float(
-        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.date >= start_date, Expense.date <= end_date, Expense.amount > 0)
-        .scalar()
+    income_amt = sum(
+        abs(e.amount) for e in all_in_range
+        if e.amount < 0 and not any(kw in (e.source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
     )
+    expense_amt = sum(e.amount for e in all_in_range if e.amount > 0)
+    income = income_amt
+    expense = expense_amt
 
     # For charts: only positive amounts (expenses) by category/payment
     cat_data = get_period_total_by_category(db, start_date, end_date)

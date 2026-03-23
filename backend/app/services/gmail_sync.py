@@ -350,7 +350,6 @@ def sync_statements(db: Session) -> dict:
 
             if parsed:
                 statements_found += 1
-                # Tag each transaction with bank-specific source
                 source_tag = f"stmt_{bank}" if bank else "credit_card_pdf"
                 for txn in parsed:
                     txn.source = source_tag
@@ -359,6 +358,16 @@ def sync_statements(db: Session) -> dict:
                     "bank": bank or "unknown",
                     "filename": filename,
                     "transactions": len(parsed),
+                    "status": "ok",
+                })
+            else:
+                # PDF found but no transactions extracted — likely password issue
+                statements_detail.append({
+                    "bank": bank or "unknown",
+                    "filename": filename,
+                    "transactions": 0,
+                    "status": "failed",
+                    "reason": "Could not parse — wrong password or unsupported format",
                 })
 
     # Dedup and save
@@ -372,7 +381,7 @@ def sync_statements(db: Session) -> dict:
             "error": None,
         }
 
-    return {"statements_found": statements_found, "imported": 0, "duplicates": 0, "statements": [], "error": None}
+    return {"statements_found": statements_found, "imported": 0, "duplicates": 0, "statements": statements_detail, "error": None}
 
 
 def _detect_bank(sender: str, subject: str) -> str:
