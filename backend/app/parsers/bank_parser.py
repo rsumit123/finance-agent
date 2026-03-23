@@ -126,12 +126,25 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
     if not table or len(table) < 2:
         return transactions
 
-    # Try to identify column indices from header row
-    header = [str(cell).lower().strip() if cell else "" for cell in table[0]]
+    # Clean (cid:X) artifacts from all cells
+    def clean_cell(cell):
+        if not cell:
+            return ""
+        return re.sub(r"\(cid:\d+\)", " ", str(cell)).strip()
+
+    # Scan for the actual header row (may not be row 0)
+    header_idx = 0
+    for idx, row in enumerate(table):
+        row_text = " ".join(clean_cell(c).lower() for c in row if c)
+        if "date" in row_text and ("withdrawal" in row_text or "debit" in row_text or "amount" in row_text or "transaction" in row_text):
+            header_idx = idx
+            break
+
+    header = [clean_cell(cell).lower() for cell in table[header_idx]]
     date_col = _find_col(header, ["date", "txn date", "transaction date", "value date"])
-    desc_col = _find_col(header, ["description", "narration", "particulars", "details", "remarks"])
+    desc_col = _find_col(header, ["description", "narration", "particulars", "details", "remarks", "transaction details"])
     debit_col = _find_col(header, ["debit", "withdrawal", "dr", "debit amount"])
-    credit_col = _find_col(header, ["credit", "deposit", "cr", "credit amount"])
+    credit_col = _find_col(header, ["credit", "deposit", "deposits", "cr", "credit amount"])
     amount_col = _find_col(header, ["amount", "txn amount"])
 
     # If we can't find columns from header, try positional guessing
@@ -140,11 +153,16 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
     if desc_col is None:
         desc_col = 1 if len(header) > 1 else 0
 
-    for row in table[1:]:
+    for row in table[header_idx + 1:]:
         if not row or all(not cell for cell in row):
             continue
 
-        row_str = [str(cell).strip() if cell else "" for cell in row]
+        row_str = [clean_cell(cell) for cell in row]
+
+        # Skip non-transaction rows (opening balance, totals, etc.)
+        first_cell = row_str[0].lower() if row_str else ""
+        if any(kw in first_cell for kw in ["opening balance", "closing balance", "total", "scheme"]):
+            continue
 
         # Extract date
         date_str = row_str[date_col] if date_col < len(row_str) else ""
