@@ -55,19 +55,21 @@ export default function StatementsPage() {
     setSelectedGroup(group);
     setLoading(true);
     try {
+      // Use the month to calculate date range (more reliable than min/max dates)
+      const [year, month] = group.month.split("-");
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      const startDate = `${group.month}-01`;
+      const endDate = `${group.month}-${lastDay}`;
+
       const data = await getExpenses({
-        start_date: group.min_date?.split("T")[0],
-        end_date: group.max_date?.split("T")[0],
+        start_date: startDate,
+        end_date: endDate,
         source: _groupToSourceFilter(group),
         limit: 500,
       });
-      // Filter client-side to match the specific bank+month
-      const filtered = data.filter((e) => {
-        const month = e.date?.substring(0, 7);
-        return month === group.month;
-      });
-      setTransactions(filtered);
-    } catch {
+      setTransactions(data);
+    } catch (err) {
+      console.error("Failed to fetch transactions:", err);
       setTransactions([]);
     } finally {
       setLoading(false);
