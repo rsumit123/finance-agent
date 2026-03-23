@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-// Charts replaced with native CSS bars for better mobile UX
+import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth } from "../api/client";
 
@@ -49,6 +49,7 @@ export default function Dashboard() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [networth, setNetworth] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   // Period state
   const [mode, setMode] = useState("month"); // "week" or "month"
@@ -103,6 +104,18 @@ export default function Dashboard() {
     setSelectedYear(now.getFullYear());
     setSelectedMonth(now.getMonth() + 1);
     setWeekOffset(0);
+  };
+
+  const drillDown = (category) => {
+    navigate("/expenses", {
+      state: {
+        category,
+        mode,
+        year: selectedYear,
+        month: selectedMonth,
+        weekOffset,
+      },
+    });
   };
 
   const categoryData = summary
@@ -277,15 +290,22 @@ export default function Dashboard() {
                 const maxVal = categoryData[0]?.value || 1;
                 const pct = ((item.value / (summary?.expense || 1)) * 100).toFixed(0);
                 return (
-                  <div key={item.name} style={{ marginBottom: 10 }}>
+                  <div
+                    key={item.name}
+                    onClick={() => drillDown(item.name)}
+                    style={{ marginBottom: 10, cursor: "pointer", padding: "6px 8px", borderRadius: 8, transition: "background 0.15s" }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-input)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 13, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS[i % COLORS.length], flexShrink: 0 }} />
                         {item.name}
                       </span>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                         {formatINR(item.value)}
-                        <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 400, marginLeft: 4 }}>{pct}%</span>
+                        <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 400 }}>{pct}%</span>
+                        <ChevronRight size={14} style={{ color: "var(--text-dim)" }} />
                       </span>
                     </div>
                     <div style={{ height: 6, background: "var(--bg-input)", borderRadius: 3, overflow: "hidden" }}>

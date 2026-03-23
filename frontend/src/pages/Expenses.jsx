@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getExpenses, addExpense, deleteExpense, updateExpense } from "../api/client";
 
@@ -84,6 +85,9 @@ function formatWeekLabel(startStr) {
 }
 
 export default function Expenses() {
+  const location = useLocation();
+  const navState = location.state || {};
+
   const [loading, setLoading] = useState(true);
   const [allExpenses, setAllExpenses] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -91,7 +95,7 @@ export default function Expenses() {
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(navState.category || "");
   const [bankFilter, setBankFilter] = useState("");
   const [txnTypeFilter, setTxnTypeFilter] = useState("");
   const [form, setForm] = useState({
@@ -99,12 +103,12 @@ export default function Expenses() {
     description: "", date: new Date().toISOString().split("T")[0],
   });
 
-  // Period state — same as Dashboard
-  const [mode, setMode] = useState("month");
+  // Period state — initialized from nav state if coming from Dashboard
   const now = new Date();
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [mode, setMode] = useState(navState.mode || "month");
+  const [selectedYear, setSelectedYear] = useState(navState.year || now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(navState.month || now.getMonth() + 1);
+  const [weekOffset, setWeekOffset] = useState(navState.weekOffset || 0);
 
   const dateRange = mode === "month"
     ? getMonthRange(selectedYear, selectedMonth)
