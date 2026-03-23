@@ -37,7 +37,7 @@ export default function Dashboard() {
       getExpenseSummary(period).then(setSummary).catch(() => {}),
       getBudgetStatus().then(setBudget).catch(() => {}),
       getSubscriptions().then(setSubscriptions).catch(() => {}),
-      getNetworth().then(setNetworth).catch(() => {}),
+      getNetworth(period).then(setNetworth).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [period]);
 
@@ -72,11 +72,13 @@ export default function Dashboard() {
       </div>
 
       {/* Net Worth / Financial Summary */}
-      {networth && (networth.total_income > 0 || networth.total_cc_debt > 0) && (
+      {networth && (networth.total_spent > 0 || networth.total_income > 0 || networth.total_cc_debt > 0) && (
         <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Net Cash Flow</div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Net Cash Flow ({period === "week" ? "This Week" : "This Month"})
+              </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: networth.net_cashflow >= 0 ? "var(--green)" : "var(--red)" }}>
                 {networth.net_cashflow >= 0 ? "+" : ""}{formatINR(networth.net_cashflow)}
               </div>
@@ -93,7 +95,7 @@ export default function Dashboard() {
             </div>
             {networth.total_cc_debt > 0 && (
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding (All Time)</div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: "var(--red)" }}>{formatINR(networth.total_cc_debt)}</div>
               </div>
             )}

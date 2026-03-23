@@ -165,13 +165,25 @@ def _month_label(month: str) -> str:
 
 
 @router.get("/networth")
-def get_networth(db: Session = Depends(get_db)):
-    """Calculate net worth summary from all transactions.
+def get_networth(
+    period: Optional[str] = Query(None, pattern="^(week|month)$"),
+    db: Session = Depends(get_db),
+):
+    """Calculate financial summary.
 
-    Net worth = total income (bank credits) - total spending + CC payments made
-    CC outstanding = CC charges - CC payments
+    If period is set, returns for that period. Otherwise all time.
+    CC outstanding is always all-time (debt doesn't reset monthly).
     """
-    expenses = db.query(Expense).all()
+    if period == "week":
+        start, end = get_current_week_range()
+        q = db.query(Expense).filter(Expense.date >= start, Expense.date <= end)
+    elif period == "month":
+        start, end = get_current_month_range()
+        q = db.query(Expense).filter(Expense.date >= start, Expense.date <= end)
+    else:
+        q = db.query(Expense)
+
+    expenses = q.all()
     if not expenses:
         return {"total_income": 0, "total_spent": 0, "net_cashflow": 0, "cc_outstanding": {}, "total_cc_debt": 0}
 
@@ -209,12 +221,36 @@ def get_networth(db: Session = Depends(get_db)):
         }
         total_cc_debt += max(outstanding, 0)
 
+    # CC outstanding is always calculated from ALL data (debt persists)
+    all_cc_expenses = db.query(Expense).all()
+    cc_charges_all: dict[str, float] = defaultdict(float)
+    cc_payments_all: dict[str, float] = defaultdict(float)
+    for e in all_cc_expenses:
+        if _is_cc_source(e.source or ""):
+            bank = _source_to_bank(e.source or "")
+            if e.amount > 0:
+                cc_charges_all[bank] += e.amount
+            elif e.amount < 0:
+                cc_payments_all[bank] += abs(e.amount)
+
+    cc_outstanding_all = {}
+    total_cc_debt_all = 0
+    for bank in sorted(set(cc_charges_all) | set(cc_payments_all)):
+        outstanding = cc_charges_all.get(bank, 0) - cc_payments_all.get(bank, 0)
+        cc_outstanding_all[bank] = {
+            "charges": round(cc_charges_all.get(bank, 0), 2),
+            "payments": round(cc_payments_all.get(bank, 0), 2),
+            "outstanding": round(max(outstanding, 0), 2),
+        }
+        total_cc_debt_all += max(outstanding, 0)
+
     return {
+        "period": period or "all",
         "total_income": round(total_income, 2),
         "total_spent": round(total_spent, 2),
         "net_cashflow": round(total_income - total_spent, 2),
-        "cc_outstanding": cc_outstanding,
-        "total_cc_debt": round(total_cc_debt, 2),
+        "cc_outstanding": cc_outstanding_all,
+        "total_cc_debt": round(total_cc_debt_all, 2),
     }
 
 

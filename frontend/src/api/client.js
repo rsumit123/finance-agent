@@ -26,8 +26,8 @@ export const getSubscriptions = () =>
 export const getSources = () =>
   api.get("/api/expenses/sources").then((r) => r.data);
 
-export const getNetworth = () =>
-  api.get("/api/expenses/networth").then((r) => r.data);
+export const getNetworth = (period) =>
+  api.get("/api/expenses/networth", { params: period ? { period } : {} }).then((r) => r.data);
 
 // Budget
 export const getBudget = () =>
