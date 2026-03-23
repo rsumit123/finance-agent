@@ -11,8 +11,9 @@ from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 
 from ..config import GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
-from ..models import GmailAccount, PdfPassword
+from ..models import GmailAccount, PdfPassword, User
 from ..parsers import detect_and_parse, parse_credit_card_statement, parse_bank_statement
+from ..parsers.categorizer import classify_category
 from ..schemas import ExpenseCreate
 from ..services.email_parser import parse_bank_email
 from ..services.tracker import create_expenses_bulk_dedup
@@ -212,6 +213,8 @@ def sync_emails(db: Session, user_id: int, after_date: str = None, before_date: 
         imported, duplicates = create_expenses_bulk_dedup(db, parsed_expenses, user_id)
         imported_count = len(imported)
         dup_count = len(duplicates)
+        # Auto-recategorize with user's name for self-transfer detection
+        _recategorize_others(db, imported, user_id)
     else:
         imported_count = 0
         dup_count = 0
@@ -409,6 +412,7 @@ def sync_statements(db: Session, user_id: int) -> dict:
     # Dedup and save
     if all_parsed:
         imported, duplicates = create_expenses_bulk_dedup(db, all_parsed, user_id)
+        _recategorize_others(db, imported, user_id)
         return {
             "statements_found": statements_found,
             "imported": len(imported),
@@ -444,6 +448,19 @@ def _detect_bank(sender: str, subject: str) -> str:
     if "federal" in text:
         return "federal"
     return "unknown"
+
+
+def _recategorize_others(db: Session, expenses: list, user_id: int):
+    """Re-categorize 'other' expenses using user's name for self-transfer detection."""
+    user = db.query(User).filter(User.id == user_id).first()
+    user_name = user.name if user else ""
+
+    for e in expenses:
+        if e.category == "other":
+            new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name)
+            if new_cat != "other":
+                e.category = new_cat
+    db.commit()
 
 
 def _find_pdf_attachments(payload: dict) -> list[dict]:

@@ -15,6 +15,7 @@ from ..parsers import (
     parse_credit_card_statement,
     parse_upi_statement,
 )
+from ..parsers.categorizer import classify_category
 from ..schemas import ExpenseOut, UploadResult
 from ..services.tracker import create_expenses_bulk_dedup
 
@@ -73,6 +74,14 @@ async def upload_statement(
     # Save transactions to DB with dedup
     if parsed:
         expenses, duplicates = create_expenses_bulk_dedup(db, parsed, user_id=current_user.id)
+        # Auto-recategorize with user's name
+        user_name = current_user.name or ""
+        for e in expenses:
+            if e.category == "other":
+                new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name)
+                if new_cat != "other":
+                    e.category = new_cat
+        db.commit()
     else:
         expenses, duplicates = [], []
 
