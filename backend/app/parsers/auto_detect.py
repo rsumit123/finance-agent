@@ -17,7 +17,10 @@ def detect_statement_type(pdf_path: str, password: str = None) -> str:
         for page in pdf.pages[:3]:  # Check first 3 pages
             page_text = page.extract_text() or ""
             if is_garbled(page_text):
-                page_text = ocr_page(page)
+                try:
+                    page_text = ocr_page(page)
+                except Exception:
+                    page_text = ""  # Skip OCR if it fails
             text += page_text + "\n"
 
     text_lower = text.lower()

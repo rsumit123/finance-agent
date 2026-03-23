@@ -293,7 +293,7 @@ def sync_statements(db: Session) -> dict:
 
     try:
         results = service.users().messages().list(
-            userId="me", q=query, maxResults=50
+            userId="me", q=query, maxResults=20
         ).execute()
     except Exception as e:
         return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": f"Gmail API error: {str(e)}"}
