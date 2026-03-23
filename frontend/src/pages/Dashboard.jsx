@@ -66,9 +66,27 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Dashboard</h1>
-        <p>Your financial overview at a glance</p>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1>Dashboard</h1>
+          <p>Your financial overview at a glance</p>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            className={period === "week" ? "" : "secondary"}
+            onClick={() => setPeriod("week")}
+            style={{ padding: "8px 14px", fontSize: 13 }}
+          >
+            This Week
+          </button>
+          <button
+            className={period === "month" ? "" : "secondary"}
+            onClick={() => setPeriod("month")}
+            style={{ padding: "8px 14px", fontSize: 13 }}
+          >
+            This Month
+          </button>
+        </div>
       </div>
 
       {/* Net Worth / Financial Summary */}
@@ -77,7 +95,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Net Cash Flow ({period === "week" ? "This Week" : "This Month"})
+                Net Cash Flow
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: networth.net_cashflow >= 0 ? "var(--green)" : "var(--red)" }}>
                 {networth.net_cashflow >= 0 ? "+" : ""}{formatINR(networth.net_cashflow)}
@@ -115,21 +133,6 @@ export default function Dashboard() {
           )}
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <button
-          className={period === "week" ? "" : "secondary"}
-          onClick={() => setPeriod("week")}
-        >
-          This Week
-        </button>
-        <button
-          className={period === "month" ? "" : "secondary"}
-          onClick={() => setPeriod("month")}
-        >
-          This Month
-        </button>
-      </div>
 
       {/* Stats */}
       <div className="stats-grid">
