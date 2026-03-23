@@ -185,52 +185,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Net Worth / Financial Summary */}
-      {networth && (networth.total_spent > 0 || networth.total_income > 0 || networth.total_cc_debt > 0) && (
-        <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Net Cash Flow
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: networth.net_cashflow >= 0 ? "var(--green)" : "var(--red)" }}>
-                {networth.net_cashflow >= 0 ? "+" : ""}{formatINR(networth.net_cashflow)}
-              </div>
-            </div>
-            {networth.total_income > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Income</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--green)" }}>+{formatINR(networth.total_income)}</div>
-              </div>
-            )}
-            <div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Spent</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{formatINR(networth.total_spent)}</div>
-            </div>
-            {networth.total_cc_debt > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding (All Time)</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--red)" }}>{formatINR(networth.total_cc_debt)}</div>
-              </div>
-            )}
-          </div>
-          {Object.keys(networth.cc_outstanding || {}).length > 0 && (
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {Object.entries(networth.cc_outstanding).map(([bank, info]) => (
-                <span key={bank} style={{
-                  fontSize: 11, padding: "3px 10px", borderRadius: 6,
-                  background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
-                  color: info.outstanding > 0 ? "var(--red)" : "var(--green)",
-                }}>
-                  {bank}: {info.outstanding > 0 ? formatINR(info.outstanding) + " due" : "Paid up"}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Stats */}
+      {/* Period stats */}
       <div className="stats-grid">
         <div className="stat-card">
           <div className="label">Spent (excl. transfers)</div>
@@ -238,11 +193,19 @@ export default function Dashboard() {
           <div className="sub">{summary?.count || 0} transactions{summary?.transfers > 0 ? ` · ${formatINR(summary.transfers)} in transfers` : ""}</div>
         </div>
         {summary?.income > 0 && (
-          <div className="stat-card" onClick={() => drillDown("", "credit")} style={{ cursor: "pointer" }}>
-            <div className="label">Income</div>
+          <div className="stat-card" onClick={() => drillDown("salary")} style={{ cursor: "pointer" }}>
+            <div className="label">Salary</div>
             <div className="value" style={{ color: "var(--green)" }}>+{formatINR(summary?.income)}</div>
             <div className="sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
               Tap to view <ChevronRight size={12} />
+            </div>
+          </div>
+        )}
+        {networth && networth.net_cashflow !== 0 && (
+          <div className="stat-card">
+            <div className="label">Net ({summary?.income > 0 ? "salary - spent" : "this period"})</div>
+            <div className="value" style={{ color: networth.net_cashflow >= 0 ? "var(--green)" : "var(--red)" }}>
+              {networth.net_cashflow >= 0 ? "+" : ""}{formatINR(networth.net_cashflow)}
             </div>
           </div>
         )}
@@ -345,6 +308,36 @@ export default function Dashboard() {
                   <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, textTransform: "capitalize" }}>{item.name}</div>
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* CC Outstanding — always all-time, not tied to period */}
+      {networth && networth.total_cc_debt > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>Credit Card Balances</h2>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {Object.entries(networth.cc_outstanding || {}).map(([bank, info]) => (
+              <div key={bank} style={{
+                flex: "1 1 auto", minWidth: 120,
+                background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
+                border: `1px solid ${info.outstanding > 0 ? "var(--red)" : "var(--green)"}`,
+                borderRadius: 10, padding: "12px 14px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: info.outstanding > 0 ? "var(--red)" : "var(--green)" }}>
+                  {info.outstanding > 0 ? formatINR(info.outstanding) : "Paid up"}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{bank}</div>
+                {info.outstanding > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>
+                    {formatINR(info.charges)} charged · {formatINR(info.payments)} paid
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
+            Based on all imported statements. Not affected by date filter above.
           </div>
         </div>
       )}
