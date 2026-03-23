@@ -67,10 +67,10 @@ CATEGORY_KEYWORDS = {
         "atl/", "cash deposit",
     ],
     "salary": [
-        "salary", "sal credit", "payroll",
+        "salary", "sal credit", "payroll", "think workforce",
     ],
     "transfer": [
-        "transfer to self", "own account", "fund transfer",
+        "transfer to self", "own account",
         "creditcard payment", "credit card payment", "mb payment",
         "cred club", "cred pay", "payzapp",
     ],
@@ -120,18 +120,19 @@ def classify_category(description: str, source: str = "", user_name: str = "") -
     if upi_match:
         name_part = upi_match.group(1).strip()
         # Check if the name part matches any merchant keywords
-        name_cat = classify_category(name_part, source=source)
+        name_cat = classify_category(name_part, source=source, user_name=user_name)
         if name_cat != "other":
             return name_cat
-        return "transfer"  # Person name via UPI
-
-    # If description looks like just a person's name (UPI transfer)
-    # and no keywords matched, it's likely a transfer
-    desc_clean = re.sub(r"\(.*?\)", "", description).strip()
-    words = desc_clean.split()
-    if 1 < len(words) <= 4:
-        # All words start with uppercase and are short — likely a name
-        if all(w[0].isupper() and len(w) <= 15 for w in words if w):
+        # Only mark as transfer if it matches user's name
+        if user_name and all(p in name_part.lower() for p in user_name.lower().split()):
             return "transfer"
+        return "other"  # Payment to a person, not self-transfer
+
+    # "fund transfer" with user's name = self-transfer
+    if "fund transfer" in desc_lower or "neft to" in desc_lower or "upi transfer to" in desc_lower:
+        if user_name and all(p in desc_lower for p in user_name.lower().split()):
+            return "transfer"
+        # Fund transfer to someone else — could be anything
+        return "other"
 
     return "other"

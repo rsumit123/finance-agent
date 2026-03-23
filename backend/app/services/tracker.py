@@ -235,7 +235,7 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
     cat_data = get_period_total_by_category(db, start_date, end_date)
     payment_data = get_period_total_by_payment(db, start_date, end_date)
 
-    cat_data = {k: v for k, v in cat_data.items() if v > 0 and k != "transfer"}
+    cat_data = {k: v for k, v in cat_data.items() if v > 0}
     payment_data = {k: v for k, v in payment_data.items() if v > 0}
 
     return ExpenseSummary(
