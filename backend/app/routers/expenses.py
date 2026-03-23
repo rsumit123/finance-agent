@@ -277,6 +277,129 @@ def get_networth(
     }
 
 
+@router.get("/insights")
+def get_insights(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    period: Optional[str] = Query(None, pattern="^(week|month)$"),
+    db: Session = Depends(get_db),
+):
+    """Generate spending insights for a period."""
+    from collections import Counter
+
+    if start_date and end_date:
+        s, e = start_date, end_date
+    elif period == "week":
+        s, e = get_current_week_range()
+    else:
+        s, e = get_current_month_range()
+
+    expenses = (
+        db.query(Expense)
+        .filter(Expense.date >= s, Expense.date <= e, Expense.amount > 0)
+        .all()
+    )
+
+    # Exclude transfers from insights
+    real = [x for x in expenses if x.category != "transfer"]
+    if not real:
+        return {"insights": [], "top_merchants": [], "top_categories": [], "by_account": []}
+
+    # Top merchants/people by total spend
+    merchant_spend: dict[str, float] = defaultdict(float)
+    merchant_count: dict[str, int] = defaultdict(int)
+    for x in real:
+        name = (x.description or "Unknown")[:50]
+        merchant_spend[name] += x.amount
+        merchant_count[name] += 1
+
+    top_merchants = sorted(
+        [{"name": k, "total": round(v, 2), "count": merchant_count[k]} for k, v in merchant_spend.items()],
+        key=lambda x: -x["total"],
+    )[:10]
+
+    # Biggest single transaction
+    biggest = max(real, key=lambda x: x.amount)
+
+    # Most frequent payee
+    freq_counter = Counter((x.description or "Unknown")[:50] for x in real)
+    most_frequent = freq_counter.most_common(1)[0] if freq_counter else None
+
+    # Per-account spending
+    account_spend: dict[str, float] = defaultdict(float)
+    account_count: dict[str, int] = defaultdict(int)
+    for x in real:
+        bank = _source_to_bank(x.source or "")
+        is_cc = _is_cc_source(x.source or "")
+        label = f"{bank} {'CC' if is_cc else 'Bank'}"
+        account_spend[label] += x.amount
+        account_count[label] += 1
+
+    by_account = sorted(
+        [{"account": k, "total": round(v, 2), "count": account_count[k]} for k, v in account_spend.items()],
+        key=lambda x: -x["total"],
+    )
+
+    # Day of week pattern
+    day_spend: dict[str, float] = defaultdict(float)
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    for x in real:
+        if x.date:
+            day = day_names[x.date.weekday()]
+            day_spend[day] += x.amount
+    by_day = [{"day": d, "total": round(day_spend.get(d, 0), 2)} for d in day_names]
+
+    # Previous period comparison
+    period_days = (e - s).days + 1
+    prev_s = s - timedelta(days=period_days)
+    prev_e = s - timedelta(days=1)
+    prev_total = float(
+        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+        .filter(Expense.date >= prev_s, Expense.date <= prev_e, Expense.amount > 0, Expense.category != "transfer")
+        .scalar()
+    )
+    current_total = sum(x.amount for x in real)
+    if prev_total > 0:
+        change_pct = round(((current_total - prev_total) / prev_total) * 100, 1)
+    else:
+        change_pct = None
+
+    # Build insight sentences
+    insights = []
+    if top_merchants:
+        insights.append(f"Highest spend: {top_merchants[0]['name']} ({_fmt(top_merchants[0]['total'])})")
+    if biggest:
+        insights.append(f"Biggest transaction: {(biggest.description or 'Unknown')[:30]} ({_fmt(biggest.amount)})")
+    if most_frequent and most_frequent[1] > 1:
+        insights.append(f"Most frequent: {most_frequent[0]} ({most_frequent[1]} transactions)")
+    if by_account:
+        insights.append(f"Most used account: {by_account[0]['account']} ({_fmt(by_account[0]['total'])})")
+    if change_pct is not None:
+        direction = "up" if change_pct > 0 else "down"
+        insights.append(f"Spending {direction} {abs(change_pct)}% vs previous period ({_fmt(prev_total)})")
+    if by_day:
+        peak_day = max(by_day, key=lambda x: x["total"])
+        if peak_day["total"] > 0:
+            insights.append(f"Peak spending day: {peak_day['day']}s ({_fmt(peak_day['total'])})")
+
+    return {
+        "insights": insights,
+        "top_merchants": top_merchants,
+        "by_account": by_account,
+        "by_day": by_day,
+        "vs_previous": {"current": round(current_total, 2), "previous": round(prev_total, 2), "change_pct": change_pct},
+    }
+
+
+def _fmt(n):
+    """Format INR for insight strings."""
+    if n >= 100000:
+        return f"₹{n/100000:.1f}L"
+    if n >= 1000:
+        return f"₹{n/1000:.1f}K"
+    return f"₹{n:.0f}"
+
+
 @router.get("/subscriptions", response_model=list[Subscription])
 def get_subscriptions(db: Session = Depends(get_db)):
     """Detect recurring/subscription payments from expense history."""

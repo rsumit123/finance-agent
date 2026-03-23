@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info } from "lucide-react";
-import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth } from "../api/client";
+import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights } from "../api/client";
 
 const COLORS = [
   "#6366f1", "#22c55e", "#eab308", "#ef4444", "#f97316",
@@ -48,6 +48,7 @@ export default function Dashboard() {
   const [budget, setBudget] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [networth, setNetworth] = useState(null);
+  const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -78,6 +79,7 @@ export default function Dashboard() {
       getBudgetStatus().then(setBudget).catch(() => {}),
       getSubscriptions().then(setSubscriptions).catch(() => {}),
       getNetworth(params).then(setNetworth).catch(() => {}),
+      getInsights(params).then(setInsights).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [selectedYear, selectedMonth, weekOffset, mode]);
 
@@ -290,6 +292,84 @@ export default function Dashboard() {
           <p style={{ color: "var(--text-dim)" }}>No expenses for this period</p>
         )}
       </div>
+
+      {/* Insights */}
+      {insights && (insights.insights?.length > 0 || insights.top_merchants?.length > 0) && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>Insights</h2>
+
+          {/* Quick insight chips */}
+          {insights.insights?.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+              {insights.insights.map((text, i) => (
+                <div key={i} style={{ fontSize: 13, padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>{["💸", "🏆", "🔄", "🏦", "📊", "📅"][i] || "📌"}</span>
+                  {text}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Top merchants */}
+          {insights.top_merchants?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Top Merchants</div>
+              {insights.top_merchants.slice(0, 5).map((m, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: i < 4 ? "1px solid var(--border)" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-dim)", width: 18 }}>{i + 1}.</span>
+                    <span style={{ fontSize: 13 }}>{m.name}</span>
+                    {m.count > 1 && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{m.count}x</span>}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{formatINR(m.total)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Per-account spending */}
+          {insights.by_account?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>By Account</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {insights.by_account.map((a, i) => (
+                  <div key={i} style={{ flex: "1 1 auto", minWidth: 100, background: "var(--bg-input)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(a.total)}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{a.account}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{a.count} txns</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Day of week */}
+          {insights.by_day?.some(d => d.total > 0) && (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Spending by Day</div>
+              <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 60 }}>
+                {insights.by_day.map((d, i) => {
+                  const max = Math.max(...insights.by_day.map(x => x.total));
+                  const h = max > 0 ? (d.total / max) * 50 : 0;
+                  return (
+                    <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                      <div style={{ background: d.total === max ? "var(--accent)" : "var(--bg-input)", height: Math.max(h, 2), borderRadius: "4px 4px 0 0", transition: "height 0.3s" }} title={formatINR(d.total)} />
+                      <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>{d.day}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Vs previous period */}
+          {insights.vs_previous?.change_pct != null && (
+            <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
+              {insights.vs_previous.change_pct > 0 ? "📈" : "📉"} {Math.abs(insights.vs_previous.change_pct)}% {insights.vs_previous.change_pct > 0 ? "more" : "less"} than previous period ({formatINR(insights.vs_previous.previous)})
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Payment Method — compact pills instead of bar chart */}
       {paymentData.length > 0 && (

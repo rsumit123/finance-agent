@@ -37,6 +37,12 @@ export const getExpenseSummary = ({ period, start_date, end_date } = {}) => {
 export const getSubscriptions = () =>
   api.get("/api/expenses/subscriptions").then((r) => r.data);
 
+export const getInsights = ({ start_date, end_date } = {}) => {
+  const params = {};
+  if (start_date && end_date) { params.start_date = start_date; params.end_date = end_date; }
+  return api.get("/api/expenses/insights", { params }).then((r) => r.data);
+};
+
 export const getSources = () =>
   api.get("/api/expenses/sources").then((r) => r.data);
 
