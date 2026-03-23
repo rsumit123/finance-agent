@@ -293,82 +293,108 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Insights */}
-      {insights && (insights.insights?.length > 0 || insights.top_merchants?.length > 0) && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <h2>Insights</h2>
-
-          {/* Quick insight chips */}
-          {insights.insights?.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-              {insights.insights.map((text, i) => (
-                <div key={i} style={{ fontSize: 13, padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>{["💸", "🏆", "🔄", "🏦", "📊", "📅"][i] || "📌"}</span>
-                  {text}
-                </div>
-              ))}
-            </div>
-          )}
-
+      {/* Insights — visual grid layout */}
+      {insights && (insights.top_merchants?.length > 0 || insights.by_account?.length > 0) && (
+        <>
+        {/* Row 1: Top merchants + Day of week side by side */}
+        <div className="grid-2" style={{ marginBottom: 20 }}>
           {/* Top merchants */}
           {insights.top_merchants?.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Top Merchants</div>
-              {insights.top_merchants.slice(0, 5).map((m, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: i < 4 ? "1px solid var(--border)" : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: "var(--text-dim)", width: 18 }}>{i + 1}.</span>
-                    <span style={{ fontSize: 13 }}>{m.name}</span>
-                    {m.count > 1 && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{m.count}x</span>}
+            <div className="card">
+              <h2>Top Spends</h2>
+              {insights.top_merchants.slice(0, 5).map((m, i) => {
+                const maxVal = insights.top_merchants[0]?.total || 1;
+                return (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }}>
+                        {m.name}
+                        {m.count > 1 && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 4 }}>{m.count}x</span>}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{formatINR(m.total)}</span>
+                    </div>
+                    <div style={{ height: 4, background: "var(--bg-input)", borderRadius: 2 }}>
+                      <div style={{ height: "100%", borderRadius: 2, width: `${(m.total / maxVal) * 100}%`, background: COLORS[i % COLORS.length] }} />
+                    </div>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{formatINR(m.total)}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          {/* Per-account spending */}
-          {insights.by_account?.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>By Account</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {insights.by_account.map((a, i) => (
-                  <div key={i} style={{ flex: "1 1 auto", minWidth: 100, background: "var(--bg-input)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-                    <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(a.total)}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{a.account}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{a.count} txns</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Day of week */}
-          {insights.by_day?.some(d => d.total > 0) && (
-            <div>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Spending by Day</div>
-              <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 60 }}>
+          {/* Day of week + comparison */}
+          <div className="card">
+            <h2>When You Spend</h2>
+            {insights.by_day?.some(d => d.total > 0) && (
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 100, marginBottom: 16 }}>
                 {insights.by_day.map((d, i) => {
                   const max = Math.max(...insights.by_day.map(x => x.total));
-                  const h = max > 0 ? (d.total / max) * 50 : 0;
+                  const h = max > 0 ? (d.total / max) * 80 : 0;
+                  const isPeak = d.total === max && d.total > 0;
                   return (
-                    <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                      <div style={{ background: d.total === max ? "var(--accent)" : "var(--bg-input)", height: Math.max(h, 2), borderRadius: "4px 4px 0 0", transition: "height 0.3s" }} title={formatINR(d.total)} />
-                      <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>{d.day}</div>
+                    <div key={i} style={{ flex: 1, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+                      {isPeak && <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, marginBottom: 2 }}>{formatINR(d.total)}</div>}
+                      <div style={{
+                        width: "100%", maxWidth: 32,
+                        background: isPeak ? "var(--accent)" : d.total > 0 ? "var(--bg-input)" : "transparent",
+                        height: Math.max(h, 3), borderRadius: 4,
+                        border: isPeak ? "none" : d.total > 0 ? "1px solid var(--border)" : "none",
+                      }} />
+                      <div style={{ fontSize: 11, color: isPeak ? "var(--accent)" : "var(--text-dim)", marginTop: 6, fontWeight: isPeak ? 700 : 400 }}>{d.day}</div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Vs previous period */}
-          {insights.vs_previous?.change_pct != null && (
-            <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>
-              {insights.vs_previous.change_pct > 0 ? "📈" : "📉"} {Math.abs(insights.vs_previous.change_pct)}% {insights.vs_previous.change_pct > 0 ? "more" : "less"} than previous period ({formatINR(insights.vs_previous.previous)})
-            </div>
-          )}
+            {/* Period comparison */}
+            {insights.vs_previous?.change_pct != null && (
+              <div style={{
+                background: insights.vs_previous.change_pct <= 0 ? "var(--green-bg)" : "var(--red-bg)",
+                border: `1px solid ${insights.vs_previous.change_pct <= 0 ? "var(--green)" : "var(--red)"}`,
+                borderRadius: 8, padding: "10px 14px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: insights.vs_previous.change_pct <= 0 ? "var(--green)" : "var(--red)" }}>
+                  {insights.vs_previous.change_pct <= 0 ? "↓" : "↑"} {Math.abs(insights.vs_previous.change_pct)}%
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                  vs previous ({formatINR(insights.vs_previous.previous)})
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Row 2: By Account */}
+        {insights.by_account?.length > 0 && (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h2>By Account</h2>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {insights.by_account.map((a, i) => {
+                const maxVal = insights.by_account[0]?.total || 1;
+                return (
+                  <div key={i} style={{
+                    flex: "1 1 auto", minWidth: 110,
+                    background: "var(--bg-input)", borderRadius: 10, padding: "14px",
+                    position: "relative", overflow: "hidden",
+                  }}>
+                    <div style={{
+                      position: "absolute", bottom: 0, left: 0, right: 0,
+                      height: `${(a.total / maxVal) * 40}%`,
+                      background: COLORS[i % COLORS.length] + "15",
+                    }} />
+                    <div style={{ position: "relative" }}>
+                      <div style={{ fontSize: 17, fontWeight: 700 }}>{formatINR(a.total)}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{a.account}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{a.count} transactions</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Payment Method — compact pills instead of bar chart */}
