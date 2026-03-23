@@ -5,8 +5,14 @@ const api = axios.create({
 });
 
 // Expenses
-export const getExpenses = (params = {}) =>
-  api.get("/api/expenses/", { params }).then((r) => r.data);
+export const getExpenses = (params = {}) => {
+  const p = { ...params };
+  // Convert start_date/end_date to the format the API expects
+  if (p.start_date && p.end_date && !p.period) {
+    delete p.period;
+  }
+  return api.get("/api/expenses/", { params: p }).then((r) => r.data);
+};
 
 export const addExpense = (data) =>
   api.post("/api/expenses/", data).then((r) => r.data);
