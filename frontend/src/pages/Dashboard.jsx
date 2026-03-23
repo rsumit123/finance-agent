@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info } from "lucide-react";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth } from "../api/client";
 
 const COLORS = [
@@ -370,6 +370,51 @@ export default function Dashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {/* How we calculate */}
+      <HowWeCalculate />
+    </div>
+  );
+}
+
+function HowWeCalculate() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 24 }}>
+      <button
+        className="secondary"
+        onClick={() => setOpen(!open)}
+        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "8px 14px", width: "100%" }}
+      >
+        <Info size={14} />
+        How we calculate these numbers
+        {open ? <ChevronUp size={14} style={{ marginLeft: "auto" }} /> : <ChevronDown size={14} style={{ marginLeft: "auto" }} />}
+      </button>
+      {open && (
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "0 0 10px 10px", padding: 16, fontSize: 13, lineHeight: 1.7, color: "var(--text-dim)" }}>
+          <p style={{ marginBottom: 12 }}>
+            <strong style={{ color: "var(--text)" }}>Spent</strong> — Sum of all debit transactions, excluding self-transfers.
+            CC bill payments and money moved between your own accounts are NOT counted as spending
+            (since the individual CC purchases are already counted).
+          </p>
+          <p style={{ marginBottom: 12 }}>
+            <strong style={{ color: "var(--text)" }}>Income</strong> — Only salary/payroll credits.
+            Refunds and CC credits are not income — they just reduce your net outflow.
+          </p>
+          <p style={{ marginBottom: 12 }}>
+            <strong style={{ color: "var(--text)" }}>Self-transfers</strong> — CC bill payments (MB PAYMENT, CRED, PayZapp)
+            and transfers to your own accounts. Shown dimmed in category bars. Excluded from "Spent"
+            to avoid double-counting.
+          </p>
+          <p style={{ marginBottom: 12 }}>
+            <strong style={{ color: "var(--text)" }}>CC Outstanding</strong> — Total charges minus payments received,
+            calculated across all time (not monthly). Shows what you owe on each card right now.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            <strong style={{ color: "var(--text)" }}>Category bars</strong> — Click any category to see the individual
+            transactions. You can re-categorize any transaction on the Expenses page.
+          </p>
         </div>
       )}
     </div>
