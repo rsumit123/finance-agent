@@ -218,7 +218,7 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
         abs(e.amount) for e in all_in_range
         if e.amount < 0
         and e.category != "transfer"
-        and not any(kw in (e.source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
+        and not any(kw in (e.source or "") for kw in ["credit_card_pdf", "_cc", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
     )
     expense_amt = sum(
         e.amount for e in all_in_range
