@@ -347,30 +347,27 @@ def sync_statements(db: Session) -> dict:
                 tmp_path = tmp.name
 
             # Try parsing with each password
+            # Try passwords first (most bank PDFs are encrypted), then None last
             parsed = None
             opened = False
-            fail_reason = "Could not open — check password"
+            fail_reason = "Could not open — add correct password in PDF Passwords"
             try:
-                for pwd in passwords_to_try:
+                for pwd in passwords + [None]:
                     try:
                         detected_type, txns = detect_and_parse(tmp_path, password=pwd)
-                        opened = True  # PDF opened successfully
+                        opened = True
                         if txns:
                             parsed = txns
                             break
                         else:
-                            fail_reason = f"Opened as {detected_type} but 0 transactions parsed — format may not be supported"
+                            fail_reason = f"Opened but 0 transactions found — format may not be supported yet"
                     except Exception as parse_err:
                         import traceback
-                        err_msg = str(parse_err).lower()
-                        full_err = traceback.format_exception_only(type(parse_err), parse_err)
-                        err_detail = "".join(full_err).strip()
-                        if "password" in err_msg or "encrypted" in err_msg or "decrypt" in err_msg or "FileNotDecryptedError" in err_detail:
-                            continue  # Wrong password, try next
-                        else:
-                            opened = True
-                            fail_reason = f"Parse error: {err_detail[:150]}"
-                            break
+                        full_err = "".join(traceback.format_exception_only(type(parse_err), parse_err)).strip()
+                        # Any error while trying a password = try next
+                        continue
+                if not opened and not parsed:
+                    fail_reason = "Could not open — add correct password in PDF Passwords"
             finally:
                 os.unlink(tmp_path)
 
