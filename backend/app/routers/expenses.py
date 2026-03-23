@@ -203,9 +203,21 @@ def get_networth(
     cc_charges: dict[str, float] = defaultdict(float)  # bank -> total charges
     cc_payments: dict[str, float] = defaultdict(float)  # bank -> total payments
 
+    total_transfers = 0
     for e in expenses:
         is_cc = _is_cc_source(e.source or "")
         bank = _source_to_bank(e.source or "")
+        is_transfer = (e.category == "transfer")
+
+        if is_transfer:
+            total_transfers += abs(e.amount)
+            # Still track CC charges/payments for outstanding calc
+            if is_cc:
+                if e.amount > 0:
+                    cc_charges[bank] += e.amount
+                else:
+                    cc_payments[bank] += abs(e.amount)
+            continue
 
         if e.amount > 0:
             total_spent += e.amount
@@ -257,6 +269,7 @@ def get_networth(
         "period": period or "all",
         "total_income": round(total_income, 2),
         "total_spent": round(total_spent, 2),
+        "total_transfers": round(total_transfers, 2),
         "net_cashflow": round(total_income - total_spent, 2),
         "cc_outstanding": cc_outstanding_all,
         "total_cc_debt": round(total_cc_debt_all, 2),

@@ -203,9 +203,15 @@ export default function Dashboard() {
               </div>
             )}
             <div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Total Spent</div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Spent</div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{formatINR(networth.total_spent)}</div>
             </div>
+            {networth.total_transfers > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Transfers</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-dim)" }}>{formatINR(networth.total_transfers)}</div>
+              </div>
+            )}
             {networth.total_cc_debt > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding (All Time)</div>

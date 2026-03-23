@@ -207,7 +207,7 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
     )
 
     # Split income vs expenses
-    # Income = negative amounts from bank sources only (not CC payments/refunds)
+    # Transfers (category="transfer") are excluded from both income and expense
     # CC credits (payments, refunds) are NOT income
     all_in_range = (
         db.query(Expense)
@@ -216,18 +216,26 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
     )
     income_amt = sum(
         abs(e.amount) for e in all_in_range
-        if e.amount < 0 and not any(kw in (e.source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
+        if e.amount < 0
+        and e.category != "transfer"
+        and not any(kw in (e.source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
     )
-    expense_amt = sum(e.amount for e in all_in_range if e.amount > 0)
+    expense_amt = sum(
+        e.amount for e in all_in_range
+        if e.amount > 0 and e.category != "transfer"
+    )
+    transfer_amt = sum(
+        abs(e.amount) for e in all_in_range
+        if e.category == "transfer"
+    )
     income = income_amt
     expense = expense_amt
 
-    # For charts: only positive amounts (expenses) by category/payment
+    # For charts: only positive amounts, exclude transfers
     cat_data = get_period_total_by_category(db, start_date, end_date)
     payment_data = get_period_total_by_payment(db, start_date, end_date)
 
-    # Filter out negative totals from chart data
-    cat_data = {k: v for k, v in cat_data.items() if v > 0}
+    cat_data = {k: v for k, v in cat_data.items() if v > 0 and k != "transfer"}
     payment_data = {k: v for k, v in payment_data.items() if v > 0}
 
     return ExpenseSummary(
@@ -235,6 +243,7 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
         count=count or 0,
         income=abs(income),
         expense=expense,
+        transfers=transfer_amt,
         by_category=cat_data,
         by_payment_method=payment_data,
     )

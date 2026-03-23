@@ -5,14 +5,16 @@ import { getExpenses, addExpense, deleteExpense, updateExpense } from "../api/cl
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
-  "health", "education", "groceries", "rent", "emi", "other",
+  "health", "education", "groceries", "rent", "emi", "transfer",
+  "atm", "salary", "other",
 ];
 
 const CATEGORY_COLORS = {
   food: "#f97316", transport: "#3b82f6", shopping: "#8b5cf6",
   entertainment: "#ec4899", bills: "#ef4444", health: "#22c55e",
   education: "#06b6d4", groceries: "#14b8a6", rent: "#eab308",
-  emi: "#f43f5e", other: "#6b7280",
+  emi: "#f43f5e", transfer: "#64748b", atm: "#a855f7",
+  salary: "#10b981", other: "#6b7280",
 };
 
 const BANK_COLORS = {
