@@ -319,7 +319,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {Object.entries(networth.cc_outstanding || {}).map(([bank, info]) => (
               <div key={bank}
-                onClick={() => navigate("/expenses", { state: { bank: bank.toLowerCase(), mode: "month", year: selectedYear, month: selectedMonth, weekOffset } })}
+                onClick={() => navigate("/statements")}
                 style={{
                   flex: "1 1 auto", minWidth: 120, cursor: "pointer",
                   background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
@@ -340,7 +340,7 @@ export default function Dashboard() {
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                  View transactions <ChevronRight size={10} />
+                  View in Statements <ChevronRight size={10} />
                 </div>
               </div>
             ))}
