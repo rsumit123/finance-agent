@@ -348,15 +348,26 @@ def sync_statements(db: Session) -> dict:
 
             # Try parsing with each password
             parsed = None
+            opened = False
+            fail_reason = "Could not open — check password"
             try:
                 for pwd in passwords_to_try:
                     try:
-                        _, txns = detect_and_parse(tmp_path, password=pwd)
+                        detected_type, txns = detect_and_parse(tmp_path, password=pwd)
+                        opened = True  # PDF opened successfully
                         if txns:
                             parsed = txns
                             break
-                    except Exception:
-                        continue
+                        else:
+                            fail_reason = f"Opened as {detected_type} but 0 transactions parsed — format may not be supported"
+                    except Exception as parse_err:
+                        err_msg = str(parse_err).lower()
+                        if "password" in err_msg or "encrypted" in err_msg or "decrypt" in err_msg:
+                            continue  # Wrong password, try next
+                        else:
+                            opened = True
+                            fail_reason = f"Parse error: {str(parse_err)[:100]}"
+                            break
             finally:
                 os.unlink(tmp_path)
 
@@ -367,7 +378,6 @@ def sync_statements(db: Session) -> dict:
                     txn.source = source_tag
                 all_parsed.extend(parsed)
 
-                # Detect if CC or bank account statement from parsed data
                 cc_count = sum(1 for t in parsed if t.payment_method == "credit_card")
                 stmt_type = "Credit Card" if cc_count > len(parsed) * 0.5 else "Bank Account"
 
@@ -379,13 +389,12 @@ def sync_statements(db: Session) -> dict:
                     "status": "ok",
                 })
             else:
-                # PDF found but no transactions extracted — likely password issue
                 statements_detail.append({
                     "bank": bank or "unknown",
                     "filename": filename,
                     "transactions": 0,
                     "status": "failed",
-                    "reason": "Could not parse — wrong password or unsupported format",
+                    "reason": fail_reason,
                 })
 
     # Dedup and save

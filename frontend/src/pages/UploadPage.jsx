@@ -461,10 +461,16 @@ function SyncResultCard({ title, result, type }) {
                   {s.filename}
                 </span>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, flexShrink: 0, marginLeft: 6, color: s.status === "failed" ? "var(--red)" : "var(--text)" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, flexShrink: 0, marginLeft: 6, color: s.status === "failed" ? "var(--red)" : "var(--text)" }} title={s.reason || ""}>
                 {s.status === "failed" ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <AlertCircle size={12} /> Wrong password
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, flexDirection: "column", textAlign: "right" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <AlertCircle size={12} />
+                      {s.reason?.includes("password") || s.reason?.includes("check password") ? "Wrong password" : s.reason?.includes("0 transactions") ? "Unsupported format" : "Parse failed"}
+                    </span>
+                    <span style={{ fontSize: 9, fontWeight: 400, color: "var(--text-dim)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.reason}
+                    </span>
                   </span>
                 ) : (
                   `${s.transactions} txns`
