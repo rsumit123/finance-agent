@@ -10,6 +10,7 @@ import Advisor from "./pages/Advisor";
 import BudgetPage from "./pages/BudgetPage";
 import StatementsPage from "./pages/StatementsPage";
 import LoginPage, { LoginCallback } from "./pages/LoginPage";
+import AccountPage from "./pages/AccountPage";
 import "./App.css";
 
 function ProtectedApp() {
@@ -60,6 +61,7 @@ function ProtectedApp() {
           <Route path="/statements" element={<StatementsPage />} />
           <Route path="/advisor" element={<Advisor />} />
           <Route path="/budget" element={<BudgetPage />} />
+          <Route path="/account" element={<AccountPage />} />
         </Routes>
       </main>
       <nav className="bottom-bar">
@@ -67,7 +69,13 @@ function ProtectedApp() {
         <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
         <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
         <NavLink to="/statements"><CreditCard size={20} /> Cards</NavLink>
-        <NavLink to="/budget"><Wallet size={20} /> Budget</NavLink>
+        <NavLink to="/account">
+          {user.picture
+            ? <img src={user.picture} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} referrerPolicy="no-referrer" />
+            : <Wallet size={20} />
+          }
+          Account
+        </NavLink>
       </nav>
     </div>
   );
