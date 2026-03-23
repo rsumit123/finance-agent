@@ -214,20 +214,16 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
         .filter(Expense.date >= start_date, Expense.date <= end_date)
         .all()
     )
-    income_amt = sum(
-        abs(e.amount) for e in all_in_range
-        if e.amount < 0
-        and e.category != "transfer"
-        and not any(kw in (e.source or "") for kw in ["credit_card_pdf", "_cc", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
-    )
-    expense_amt = sum(
-        e.amount for e in all_in_range
-        if e.amount > 0 and e.category != "transfer"
-    )
-    transfer_amt = sum(
-        abs(e.amount) for e in all_in_range
-        if e.category == "transfer"
-    )
+    # Income = salary category only (actual earnings)
+    # Refunds, CC credits, transfers are NOT income
+    income_amt = sum(abs(e.amount) for e in all_in_range if e.category == "salary")
+
+    # Expense = positive amounts, excluding transfers
+    expense_amt = sum(e.amount for e in all_in_range if e.amount > 0 and e.category != "transfer")
+
+    # Transfers = both sides of self-transfers
+    transfer_amt = sum(abs(e.amount) for e in all_in_range if e.category == "transfer")
+
     income = income_amt
     expense = expense_amt
 

@@ -209,9 +209,12 @@ def get_networth(
         bank = _source_to_bank(e.source or "")
         is_transfer = (e.category == "transfer")
 
+        # Income = salary only
+        if e.category == "salary":
+            total_income += abs(e.amount)
+
         if is_transfer:
             total_transfers += abs(e.amount)
-            # Still track CC charges/payments for outstanding calc
             if is_cc:
                 if e.amount > 0:
                     cc_charges[bank] += e.amount
@@ -226,8 +229,6 @@ def get_networth(
         elif e.amount < 0:
             if is_cc:
                 cc_payments[bank] += abs(e.amount)
-            else:
-                total_income += abs(e.amount)
 
     # CC outstanding per bank
     cc_outstanding = {}
