@@ -268,10 +268,22 @@ def sync_statements(db: Session) -> dict:
     # Always try None (no password) first
     passwords_to_try = [None] + passwords
 
-    # Search for statement emails with PDF attachments
+    # Search for bank/CC statement emails with PDF attachments
+    # Use sender-based filtering to avoid catching investment/demat statements
+    statement_senders = [
+        "from:hdfcbank.net", "from:hdfcbank.com",
+        "from:axisbank.com", "from:axis.bank.in",
+        "from:icicibank.com",
+        "from:kotak.bank.in", "from:kotak.com",
+        "from:sbi.co.in",
+        "from:federalbank.co.in",
+        "from:idfcfirstbank.com",
+        "from:yesbank.in",
+    ]
+    sender_query = " OR ".join(statement_senders)
     query = (
-        "(subject:\"credit card statement\" OR subject:\"card statement\" "
-        "OR subject:\"account statement\" OR subject:\"bank statement\") "
+        f"({sender_query}) "
+        "subject:(statement) "
         "has:attachment filename:pdf"
     )
 
@@ -354,10 +366,16 @@ def sync_statements(db: Session) -> dict:
                 for txn in parsed:
                     txn.source = source_tag
                 all_parsed.extend(parsed)
+
+                # Detect if CC or bank account statement from parsed data
+                cc_count = sum(1 for t in parsed if t.payment_method == "credit_card")
+                stmt_type = "Credit Card" if cc_count > len(parsed) * 0.5 else "Bank Account"
+
                 statements_detail.append({
                     "bank": bank or "unknown",
                     "filename": filename,
                     "transactions": len(parsed),
+                    "type": stmt_type,
                     "status": "ok",
                 })
             else:
@@ -405,6 +423,8 @@ def _detect_bank(sender: str, subject: str) -> str:
         return "yes_bank"
     if "bob" in text or "bank of baroda" in text:
         return "bob"
+    if "federal" in text:
+        return "federal"
     return "unknown"
 
 

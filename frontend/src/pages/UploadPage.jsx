@@ -452,6 +452,11 @@ function SyncResultCard({ title, result, type }) {
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "rgba(99,102,241,0.12)", color: "var(--accent)", flexShrink: 0, textTransform: "uppercase" }}>
                   {s.bank}
                 </span>
+                {s.type && (
+                  <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: s.type === "Credit Card" ? "rgba(236,72,153,0.15)" : "rgba(34,197,94,0.15)", color: s.type === "Credit Card" ? "#ec4899" : "var(--green)", flexShrink: 0 }}>
+                    {s.type === "Credit Card" ? "CC" : "Bank"}
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.filename}
                 </span>
