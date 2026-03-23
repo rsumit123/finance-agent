@@ -99,7 +99,7 @@ export default function Expenses() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(navState.category || "");
   const [bankFilter, setBankFilter] = useState("");
-  const [txnTypeFilter, setTxnTypeFilter] = useState("");
+  const [txnTypeFilter, setTxnTypeFilter] = useState(navState.txnType || "");
   const [form, setForm] = useState({
     amount: "", category: "other", payment_method: "upi",
     description: "", date: new Date().toISOString().split("T")[0],

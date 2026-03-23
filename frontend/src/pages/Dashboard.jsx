@@ -106,10 +106,11 @@ export default function Dashboard() {
     setWeekOffset(0);
   };
 
-  const drillDown = (category) => {
+  const drillDown = (category, txnType = "") => {
     navigate("/expenses", {
       state: {
         category,
+        txnType,
         mode,
         year: selectedYear,
         month: selectedMonth,
@@ -237,10 +238,12 @@ export default function Dashboard() {
           <div className="sub">{summary?.count || 0} transactions{summary?.transfers > 0 ? ` · ${formatINR(summary.transfers)} in transfers` : ""}</div>
         </div>
         {summary?.income > 0 && (
-          <div className="stat-card">
-            <div className="label">Received</div>
+          <div className="stat-card" onClick={() => drillDown("", "credit")} style={{ cursor: "pointer" }}>
+            <div className="label">Income</div>
             <div className="value" style={{ color: "var(--green)" }}>+{formatINR(summary?.income)}</div>
-            <div className="sub">Net: {formatINR(summary?.total)}</div>
+            <div className="sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              Tap to view <ChevronRight size={12} />
+            </div>
           </div>
         )}
         {budget && (
@@ -300,7 +303,7 @@ export default function Dashboard() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, opacity: item.name === "transfer" ? 0.5 : 1 }}>
                       <span style={{ fontSize: 13, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                        {item.name}{item.name === "transfer" ? " (not counted as spend)" : ""}
+                        {item.name === "transfer" ? "Self-transfers (excluded from spend)" : item.name}
                       </span>
                       <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                         {formatINR(item.value)}
