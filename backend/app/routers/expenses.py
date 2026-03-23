@@ -86,7 +86,10 @@ def get_sources(db: Session = Depends(get_db)):
         amounts = [t.amount for t in txns]
         dates = [t.date for t in txns if t.date]
         debits = sum(a for a in amounts if a > 0)
-        credits = abs(sum(a for a in amounts if a < 0))
+        neg_total = abs(sum(a for a in amounts if a < 0))
+
+        # For CC sources, negatives are payments/refunds, NOT income
+        is_cc = any(kw in (txns[0].source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
         result.append({
             "bank": bank,
             "source_type": source_type,
@@ -95,7 +98,9 @@ def get_sources(db: Session = Depends(get_db)):
             "transaction_count": len(txns),
             "total_amount": round(sum(amounts), 2),
             "total_debits": round(debits, 2),
-            "total_credits": round(credits, 2),
+            "total_credits": round(neg_total, 2) if not is_cc else 0,
+            "total_payments": round(neg_total, 2) if is_cc else 0,
+            "is_credit_card": is_cc,
             "min_date": min(dates).isoformat() if dates else None,
             "max_date": max(dates).isoformat() if dates else None,
         })

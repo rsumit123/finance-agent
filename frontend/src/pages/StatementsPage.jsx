@@ -88,7 +88,9 @@ export default function StatementsPage() {
     bankGroups[s.bank].sources.push(s);
     bankGroups[s.bank].totalDebits = (bankGroups[s.bank].totalDebits || 0) + (s.total_debits || 0);
     bankGroups[s.bank].totalCredits = (bankGroups[s.bank].totalCredits || 0) + (s.total_credits || 0);
+    bankGroups[s.bank].totalPayments = (bankGroups[s.bank].totalPayments || 0) + (s.total_payments || 0);
     bankGroups[s.bank].totalAmount += s.total_amount;
+    if (s.is_credit_card) bankGroups[s.bank].isCreditCard = true;
     bankGroups[s.bank].totalTxns += s.transaction_count;
   });
 
@@ -115,6 +117,7 @@ export default function StatementsPage() {
           </h1>
           <p style={{ color: "var(--text-dim)", marginTop: 4 }}>
             {selectedGroup.transaction_count} transactions · {formatINR(selectedGroup.total_debits || selectedGroup.total_amount)} spent
+            {selectedGroup.total_payments > 0 && ` · ${formatINR(selectedGroup.total_payments)} paid`}
             {selectedGroup.total_credits > 0 && <span style={{ color: "var(--green)" }}> · +{formatINR(selectedGroup.total_credits)} received</span>}
             {" · via "}{SOURCE_LABELS[selectedGroup.source_type] || selectedGroup.source_type}
           </p>
@@ -157,8 +160,13 @@ export default function StatementsPage() {
                       )}
                     </div>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, flexShrink: 0, color: e.amount < 0 ? "var(--green)" : "var(--text)" }}>
-                    {e.amount < 0 ? "+" + formatINR(Math.abs(e.amount)) : formatINR(e.amount)}
+                  <div style={{ fontWeight: 700, fontSize: 15, flexShrink: 0, color: e.amount < 0 ? (selectedGroup?.is_credit_card ? "var(--accent)" : "var(--green)") : "var(--text)" }}>
+                    {e.amount < 0
+                      ? (selectedGroup?.is_credit_card
+                        ? formatINR(Math.abs(e.amount)) + " ↩"
+                        : "+" + formatINR(Math.abs(e.amount)))
+                      : formatINR(e.amount)
+                    }
                   </div>
                 </div>
               );
@@ -198,6 +206,7 @@ export default function StatementsPage() {
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{bg.bank}</div>
                     <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
                       {bg.totalTxns} txns · {formatINR(bg.totalDebits || 0)} spent
+                      {bg.totalPayments > 0 && <span> · {formatINR(bg.totalPayments)} paid</span>}
                       {bg.totalCredits > 0 && <span style={{ color: "var(--green)" }}> · +{formatINR(bg.totalCredits)} received</span>}
                     </div>
                   </div>
@@ -232,7 +241,8 @@ export default function StatementsPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 600, fontSize: 14 }}>
                           {formatINR(s.total_debits || s.total_amount)}
-                          {s.total_credits > 0 && <span style={{ color: "var(--green)", fontWeight: 400, fontSize: 12 }}> +{formatINR(s.total_credits)}</span>}
+                          {s.total_payments > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-dim)" }}> {formatINR(s.total_payments)} paid</span>}
+                          {s.total_credits > 0 && <span style={{ color: "var(--green)", fontWeight: 400, fontSize: 11 }}> +{formatINR(s.total_credits)}</span>}
                         </span>
                         <ChevronRight size={16} style={{ color: "var(--text-dim)" }} />
                       </div>
