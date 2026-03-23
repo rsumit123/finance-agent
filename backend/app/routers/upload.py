@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import UploadHistory, User
+from ..models import CategoryRule, UploadHistory, User
 from ..parsers import (
     detect_and_parse,
     parse_bank_statement,
@@ -74,11 +74,12 @@ async def upload_statement(
     # Save transactions to DB with dedup
     if parsed:
         expenses, duplicates = create_expenses_bulk_dedup(db, parsed, user_id=current_user.id)
-        # Auto-recategorize with user's name
+        # Auto-recategorize with user's name and learned rules
         user_name = current_user.name or ""
+        rules = [(r.keyword, r.category) for r in db.query(CategoryRule).filter(CategoryRule.user_id == current_user.id).all()]
         for e in expenses:
             if e.category == "other":
-                new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name)
+                new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name, user_rules=rules)
                 if new_cat != "other":
                     e.category = new_cat
         db.commit()

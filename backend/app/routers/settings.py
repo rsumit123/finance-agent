@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Expense, PdfPassword, UploadHistory, User
+from ..models import CategoryRule, Expense, PdfPassword, UploadHistory, User
 from ..parsers.categorizer import classify_category
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -59,17 +59,36 @@ def recategorize_expenses(
     """Re-categorize all 'other' transactions for current user."""
     # Use user's name from profile if not provided
     name = user_name or current_user.name or ""
+    rules = [(r.keyword, r.category) for r in db.query(CategoryRule).filter(CategoryRule.user_id == current_user.id).all()]
     others = db.query(Expense).filter(Expense.user_id == current_user.id, Expense.category == "other").all()
     fixed = 0
     changes = {}
     for e in others:
-        new_cat = classify_category(e.description or "", source=e.source or "", user_name=name)
+        new_cat = classify_category(e.description or "", source=e.source or "", user_name=name, user_rules=rules)
         if new_cat != "other":
             e.category = new_cat
             fixed += 1
             changes[new_cat] = changes.get(new_cat, 0) + 1
     db.commit()
     return {"total_others": len(others), "recategorized": fixed, "remaining_other": len(others) - fixed, "changes": changes}
+
+
+@router.get("/rules")
+def list_rules(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """List learned category rules."""
+    rules = db.query(CategoryRule).filter(CategoryRule.user_id == current_user.id).order_by(CategoryRule.created_at.desc()).all()
+    return [{"id": r.id, "keyword": r.keyword, "category": r.category} for r in rules]
+
+
+@router.delete("/rules/{rule_id}")
+def delete_rule(rule_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a learned category rule."""
+    rule = db.query(CategoryRule).filter(CategoryRule.id == rule_id, CategoryRule.user_id == current_user.id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+    return {"message": "Rule deleted"}
 
 
 @router.post("/clear-data")

@@ -85,18 +85,27 @@ PERSON_NAME_PATTERN = re.compile(
 )
 
 
-def classify_category(description: str, source: str = "", user_name: str = "") -> str:
+def classify_category(description: str, source: str = "", user_name: str = "", user_rules: list = None) -> str:
     """Classify a transaction into a category based on description.
 
     Args:
         description: Transaction description/merchant name
         source: Source tag (for context)
         user_name: User's name for self-transfer detection
+        user_rules: List of (keyword, category) tuples from user's learned rules
     """
     if not description:
         return "other"
 
     desc_lower = description.lower().strip()
+
+    # Check user-specific learned rules first (highest priority)
+    if user_rules:
+        desc_normalized = re.sub(r"[^a-z\s]", "", desc_lower)
+        desc_normalized = re.sub(r"\s+", " ", desc_normalized).strip()
+        for keyword, category in user_rules:
+            if keyword in desc_normalized:
+                return category
 
     # Self-transfer detection
     if user_name:

@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 
 from ..config import GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
-from ..models import GmailAccount, PdfPassword, User
+from ..models import CategoryRule, GmailAccount, PdfPassword, User
 from ..parsers import detect_and_parse, parse_credit_card_statement, parse_bank_statement
 from ..parsers.categorizer import classify_category
 from ..schemas import ExpenseCreate
@@ -451,13 +451,16 @@ def _detect_bank(sender: str, subject: str) -> str:
 
 
 def _recategorize_others(db: Session, expenses: list, user_id: int):
-    """Re-categorize 'other' expenses using user's name for self-transfer detection."""
+    """Re-categorize 'other' expenses using user's name and learned rules."""
     user = db.query(User).filter(User.id == user_id).first()
     user_name = user.name if user else ""
 
+    # Load user's learned category rules
+    rules = [(r.keyword, r.category) for r in db.query(CategoryRule).filter(CategoryRule.user_id == user_id).all()]
+
     for e in expenses:
         if e.category == "other":
-            new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name)
+            new_cat = classify_category(e.description or "", source=e.source or "", user_name=user_name, user_rules=rules)
             if new_cat != "other":
                 e.category = new_cat
     db.commit()

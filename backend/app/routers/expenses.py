@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Expense, User
+from ..models import CategoryRule, Expense, User
 from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary, Subscription
 from ..services.subscriptions import detect_subscriptions
 from ..services.tracker import (
@@ -440,22 +440,62 @@ def get_subscriptions(
 def update_expense(
     expense_id: int,
     updates: dict,
+    learn: bool = Query(True, description="Learn this category for future imports"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update specific fields on an expense (e.g. category)."""
+    """Update specific fields on an expense. If category changes, learns the pattern."""
     expense = get_expense(db, expense_id, user_id=current_user.id)
     if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
+
+    old_category = expense.category
 
     allowed = {"category", "description", "payment_method"}
     for key, value in updates.items():
         if key in allowed:
             setattr(expense, key, value)
 
+    # Learn category rule if category was changed
+    new_category = updates.get("category")
+    if learn and new_category and new_category != old_category and expense.description:
+        _learn_category_rule(db, current_user.id, expense.description, new_category)
+
     db.commit()
     db.refresh(expense)
     return expense
+
+
+def _learn_category_rule(db, user_id: int, description: str, category: str):
+    """Extract a keyword from description and save as a category rule."""
+    import re
+    # Normalize: lowercase, strip refs/ids, take meaningful words
+    desc = description.lower().strip()
+    desc = re.sub(r"\(.*?\)", "", desc)  # remove parenthetical
+    desc = re.sub(r"ref#?\s*\S+", "", desc)  # remove ref numbers
+    desc = re.sub(r"\d{6,}", "", desc)  # remove long numbers
+    desc = re.sub(r"[^a-z\s]", "", desc)
+    desc = re.sub(r"\s+", " ", desc).strip()
+
+    # Take first 3 significant words as the keyword
+    words = [w for w in desc.split() if len(w) > 2]
+    if not words:
+        return
+
+    keyword = " ".join(words[:3])
+    if len(keyword) < 4:
+        return
+
+    # Check if rule already exists for this keyword
+    existing = db.query(CategoryRule).filter(
+        CategoryRule.user_id == user_id,
+        CategoryRule.keyword == keyword,
+    ).first()
+
+    if existing:
+        existing.category = category  # Update
+    else:
+        db.add(CategoryRule(user_id=user_id, keyword=keyword, category=category))
 
 
 @router.delete("/{expense_id}")

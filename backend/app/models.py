@@ -112,6 +112,16 @@ class GmailAccount(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    keyword = Column(String(200), nullable=False)  # normalized merchant/description pattern
+    category = Column(String(50), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class UploadHistory(Base):
     __tablename__ = "upload_history"
 
