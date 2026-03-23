@@ -274,9 +274,13 @@ export default function StatementsPage() {
 }
 
 function _groupToSourceFilter(group) {
-  // Map source_type back to source field prefix for API filtering
-  if (group.source_type === "gmail_alert") return "email_" + group.bank.toLowerCase();
-  if (group.source_type === "gmail_statement") return "stmt_" + group.bank.toLowerCase();
+  // Map source_type + account_type back to source field prefix
+  const bank = group.bank.toLowerCase();
+  if (group.source_type === "gmail_alert") return "email_" + bank;
+  if (group.source_type === "gmail_statement") {
+    const suffix = group.is_credit_card ? "_cc" : "_bank";
+    return "stmt_" + bank + suffix;
+  }
   if (group.source_type === "pdf_upload") return group.bank === "PhonePe/UPI" ? "upi_pdf" : "credit_card_pdf";
   return "manual";
 }

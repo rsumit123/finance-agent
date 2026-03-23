@@ -149,7 +149,11 @@ def list_expenses(
     if payment_method:
         q = q.filter(Expense.payment_method == payment_method)
     if source:
-        q = q.filter(Expense.source == source)
+        # Support both exact match and prefix match (e.g. "stmt_axis_cc" or "email_scapia")
+        if source.endswith("_cc") or source.endswith("_bank") or source in ("email_scapia", "email_hdfc_bank", "email_hdfc_cc", "manual", "upi_pdf", "credit_card_pdf", "bank_pdf"):
+            q = q.filter(Expense.source == source)
+        else:
+            q = q.filter(Expense.source.like(f"{source}%"))
     return q.order_by(Expense.date.desc()).offset(offset).limit(limit).all()
 
 
