@@ -71,27 +71,28 @@ def get_sources(db: Session = Depends(get_db)):
     """
     expenses = db.query(Expense).order_by(Expense.date.desc()).all()
 
-    # Group by (source_type, month)
+    # Group by (bank, account_type, source_type, month)
     groups: dict[tuple, list] = defaultdict(list)
     for e in expenses:
-        # Determine bank from source
         source = e.source or "unknown"
         bank = _source_to_bank(source)
         source_type = _source_to_type(source)
+        is_cc = _is_cc_source(source)
+        account_type = "Credit Card" if is_cc else "Bank Account"
         month_key = e.date.strftime("%Y-%m") if e.date else "unknown"
-        groups[(bank, source_type, month_key)].append(e)
+        groups[(bank, account_type, source_type, month_key)].append(e)
 
     result = []
-    for (bank, source_type, month), txns in sorted(groups.items(), key=lambda x: x[0][2], reverse=True):
+    for (bank, account_type, source_type, month), txns in sorted(groups.items(), key=lambda x: x[0][3], reverse=True):
         amounts = [t.amount for t in txns]
         dates = [t.date for t in txns if t.date]
         debits = sum(a for a in amounts if a > 0)
         neg_total = abs(sum(a for a in amounts if a < 0))
 
-        # For CC sources, negatives are payments/refunds, NOT income
-        is_cc = any(kw in (txns[0].source or "") for kw in ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia"])
+        is_cc = account_type == "Credit Card"
         result.append({
             "bank": bank,
+            "account_type": account_type,
             "source_type": source_type,
             "month": month,
             "month_label": _month_label(month),
@@ -132,6 +133,16 @@ def _source_to_bank(source: str) -> str:
     return source.replace("_", " ").title()
 
 
+def _is_cc_source(source: str) -> bool:
+    """Check if a source is a credit card source (vs bank account)."""
+    s = source.lower()
+    cc_keywords = ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia", "email_icici_cc"]
+    # email_hdfc_bank is bank, not CC
+    if "email_hdfc_bank" in s or "bank_pdf" in s or "upi_pdf" in s:
+        return False
+    return any(kw in s for kw in cc_keywords)
+
+
 def _source_to_type(source: str) -> str:
     if source.startswith("email"):
         return "gmail_alert"
@@ -151,6 +162,60 @@ def _month_label(month: str) -> str:
         return dt.strftime("%b %Y")
     except ValueError:
         return month
+
+
+@router.get("/networth")
+def get_networth(db: Session = Depends(get_db)):
+    """Calculate net worth summary from all transactions.
+
+    Net worth = total income (bank credits) - total spending + CC payments made
+    CC outstanding = CC charges - CC payments
+    """
+    expenses = db.query(Expense).all()
+    if not expenses:
+        return {"total_income": 0, "total_spent": 0, "net_cashflow": 0, "cc_outstanding": {}, "total_cc_debt": 0}
+
+    total_income = 0  # bank credits only
+    total_spent = 0   # all debits
+
+    # Per-card CC tracking
+    cc_charges: dict[str, float] = defaultdict(float)  # bank -> total charges
+    cc_payments: dict[str, float] = defaultdict(float)  # bank -> total payments
+
+    for e in expenses:
+        is_cc = _is_cc_source(e.source or "")
+        bank = _source_to_bank(e.source or "")
+
+        if e.amount > 0:
+            total_spent += e.amount
+            if is_cc:
+                cc_charges[bank] += e.amount
+        elif e.amount < 0:
+            if is_cc:
+                cc_payments[bank] += abs(e.amount)
+            else:
+                total_income += abs(e.amount)
+
+    # CC outstanding per bank
+    cc_outstanding = {}
+    total_cc_debt = 0
+    all_cc_banks = set(cc_charges.keys()) | set(cc_payments.keys())
+    for bank in sorted(all_cc_banks):
+        outstanding = cc_charges.get(bank, 0) - cc_payments.get(bank, 0)
+        cc_outstanding[bank] = {
+            "charges": round(cc_charges.get(bank, 0), 2),
+            "payments": round(cc_payments.get(bank, 0), 2),
+            "outstanding": round(max(outstanding, 0), 2),
+        }
+        total_cc_debt += max(outstanding, 0)
+
+    return {
+        "total_income": round(total_income, 2),
+        "total_spent": round(total_spent, 2),
+        "net_cashflow": round(total_income - total_spent, 2),
+        "cc_outstanding": cc_outstanding,
+        "total_cc_debt": round(total_cc_debt, 2),
+    }
 
 
 @router.get("/subscriptions", response_model=list[Subscription])

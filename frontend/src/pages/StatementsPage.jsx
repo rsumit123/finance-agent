@@ -79,19 +79,25 @@ export default function StatementsPage() {
     setTransactions([]);
   };
 
-  // Group sources by bank for the overview
+  // Group sources by bank + account type (CC vs Bank separate)
   const bankGroups = {};
   sources.forEach((s) => {
-    if (!bankGroups[s.bank]) {
-      bankGroups[s.bank] = { bank: s.bank, sources: [], totalAmount: 0, totalTxns: 0 };
+    const key = `${s.bank}_${s.account_type || (s.is_credit_card ? "Credit Card" : "Bank Account")}`;
+    if (!bankGroups[key]) {
+      bankGroups[key] = {
+        bank: s.bank,
+        accountType: s.account_type || (s.is_credit_card ? "Credit Card" : "Bank Account"),
+        isCreditCard: s.is_credit_card,
+        sources: [], totalAmount: 0, totalTxns: 0,
+        totalDebits: 0, totalCredits: 0, totalPayments: 0,
+      };
     }
-    bankGroups[s.bank].sources.push(s);
-    bankGroups[s.bank].totalDebits = (bankGroups[s.bank].totalDebits || 0) + (s.total_debits || 0);
-    bankGroups[s.bank].totalCredits = (bankGroups[s.bank].totalCredits || 0) + (s.total_credits || 0);
-    bankGroups[s.bank].totalPayments = (bankGroups[s.bank].totalPayments || 0) + (s.total_payments || 0);
-    bankGroups[s.bank].totalAmount += s.total_amount;
-    if (s.is_credit_card) bankGroups[s.bank].isCreditCard = true;
-    bankGroups[s.bank].totalTxns += s.transaction_count;
+    bankGroups[key].sources.push(s);
+    bankGroups[key].totalDebits += (s.total_debits || 0);
+    bankGroups[key].totalCredits += (s.total_credits || 0);
+    bankGroups[key].totalPayments += (s.total_payments || 0);
+    bankGroups[key].totalAmount += s.total_amount;
+    bankGroups[key].totalTxns += s.transaction_count;
   });
 
   if (selectedGroup) {
@@ -203,7 +209,16 @@ export default function StatementsPage() {
                     <CreditCard size={18} style={{ color: bankColor }} />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{bg.bank}</div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>
+                      {bg.bank}
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, marginLeft: 8, padding: "2px 8px", borderRadius: 4,
+                        background: bg.isCreditCard ? "rgba(236,72,153,0.15)" : "rgba(34,197,94,0.15)",
+                        color: bg.isCreditCard ? "#ec4899" : "var(--green)",
+                      }}>
+                        {bg.isCreditCard ? "Credit Card" : "Bank Account"}
+                      </span>
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
                       {bg.totalTxns} txns · {formatINR(bg.totalDebits || 0)} spent
                       {bg.totalPayments > 0 && <span> · {formatINR(bg.totalPayments)} paid</span>}

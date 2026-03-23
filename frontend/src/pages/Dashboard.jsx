@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { getExpenseSummary, getBudgetStatus, getSubscriptions } from "../api/client";
+import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth } from "../api/client";
 
 const COLORS = [
   "#6366f1", "#22c55e", "#eab308", "#ef4444", "#f97316",
@@ -27,12 +27,18 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [budget, setBudget] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [networth, setNetworth] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("month");
 
   useEffect(() => {
-    getExpenseSummary(period).then(setSummary).catch(() => {});
-    getBudgetStatus().then(setBudget).catch(() => {});
-    getSubscriptions().then(setSubscriptions).catch(() => {});
+    setLoading(true);
+    Promise.all([
+      getExpenseSummary(period).then(setSummary).catch(() => {}),
+      getBudgetStatus().then(setBudget).catch(() => {}),
+      getSubscriptions().then(setSubscriptions).catch(() => {}),
+      getNetworth().then(setNetworth).catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, [period]);
 
   const categoryData = summary
@@ -49,12 +55,64 @@ export default function Dashboard() {
       }))
     : [];
 
+  if (loading) {
+    return (
+      <div>
+        <div className="page-header"><h1>Dashboard</h1></div>
+        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
         <p>Your financial overview at a glance</p>
       </div>
+
+      {/* Net Worth / Financial Summary */}
+      {networth && (networth.total_income > 0 || networth.total_cc_debt > 0) && (
+        <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Net Cash Flow</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: networth.net_cashflow >= 0 ? "var(--green)" : "var(--red)" }}>
+                {networth.net_cashflow >= 0 ? "+" : ""}{formatINR(networth.net_cashflow)}
+              </div>
+            </div>
+            {networth.total_income > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Income</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--green)" }}>+{formatINR(networth.total_income)}</div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Total Spent</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{formatINR(networth.total_spent)}</div>
+            </div>
+            {networth.total_cc_debt > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--red)" }}>{formatINR(networth.total_cc_debt)}</div>
+              </div>
+            )}
+          </div>
+          {Object.keys(networth.cc_outstanding || {}).length > 0 && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {Object.entries(networth.cc_outstanding).map(([bank, info]) => (
+                <span key={bank} style={{
+                  fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                  background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
+                  color: info.outstanding > 0 ? "var(--red)" : "var(--green)",
+                }}>
+                  {bank}: {info.outstanding > 0 ? formatINR(info.outstanding) + " due" : "Paid up"}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         <button

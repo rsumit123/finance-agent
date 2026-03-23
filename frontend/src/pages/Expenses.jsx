@@ -73,6 +73,7 @@ function formatTime(dateStr) {
 }
 
 export default function Expenses() {
+  const [loading, setLoading] = useState(true);
   const [allExpenses, setAllExpenses] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(0);
@@ -92,12 +93,13 @@ export default function Expenses() {
   const [filter, setFilter] = useState({ period: "month" });
 
   const load = () => {
+    setLoading(true);
     const params = { limit: 500 };
     if (filter.period !== "all") params.period = filter.period;
     getExpenses(params).then((data) => {
       setAllExpenses(data);
       setPage(0);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
   };
 
   useEffect(load, [filter.period]);
@@ -269,6 +271,10 @@ export default function Expenses() {
       </div>
 
       {/* Transaction list */}
+      {loading ? (
+        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+      ) : (
+      <>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {paged.length === 0 ? (
           <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>
@@ -401,6 +407,8 @@ export default function Expenses() {
             <ChevronRight size={16} />
           </button>
         </div>
+      )}
+      </>
       )}
     </div>
   );
