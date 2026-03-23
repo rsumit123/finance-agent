@@ -373,13 +373,18 @@ def sync_statements(db: Session) -> dict:
 
             if parsed:
                 statements_found += 1
-                source_tag = f"stmt_{bank}" if bank else "credit_card_pdf"
+
+                # Detect CC vs Bank from parsed transactions
+                cc_count = sum(1 for t in parsed if t.payment_method == "credit_card")
+                is_cc_stmt = cc_count > len(parsed) * 0.5
+                stmt_type = "Credit Card" if is_cc_stmt else "Bank Account"
+
+                # Tag source with bank + account type
+                acct_suffix = "cc" if is_cc_stmt else "bank"
+                source_tag = f"stmt_{bank}_{acct_suffix}" if bank else ("credit_card_pdf" if is_cc_stmt else "bank_pdf")
                 for txn in parsed:
                     txn.source = source_tag
                 all_parsed.extend(parsed)
-
-                cc_count = sum(1 for t in parsed if t.payment_method == "credit_card")
-                stmt_type = "Credit Card" if cc_count > len(parsed) * 0.5 else "Bank Account"
 
                 statements_detail.append({
                     "bank": bank or "unknown",

@@ -136,11 +136,16 @@ def _source_to_bank(source: str) -> str:
 def _is_cc_source(source: str) -> bool:
     """Check if a source is a credit card source (vs bank account)."""
     s = source.lower()
-    cc_keywords = ["credit_card", "stmt_", "email_hdfc_cc", "email_axis_cc", "email_scapia", "email_icici_cc"]
-    # email_hdfc_bank is bank, not CC
-    if "email_hdfc_bank" in s or "bank_pdf" in s or "upi_pdf" in s:
+    # Explicit bank sources
+    if any(kw in s for kw in ["_bank", "bank_pdf", "upi_pdf", "email_hdfc_bank"]):
         return False
-    return any(kw in s for kw in cc_keywords)
+    # Explicit CC sources
+    if any(kw in s for kw in ["_cc", "credit_card", "email_scapia", "email_hdfc_cc", "email_axis_cc", "email_icici_cc"]):
+        return True
+    # Old-style stmt_ without _cc/_bank suffix — treat as CC (legacy)
+    if s.startswith("stmt_") and "_cc" not in s and "_bank" not in s:
+        return True
+    return False
 
 
 def _source_to_type(source: str) -> str:
