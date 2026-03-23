@@ -17,8 +17,16 @@ export const updateExpense = (id, updates) =>
 export const deleteExpense = (id) =>
   api.delete(`/api/expenses/${id}`).then((r) => r.data);
 
-export const getExpenseSummary = (period = "month") =>
-  api.get("/api/expenses/summary", { params: { period } }).then((r) => r.data);
+export const getExpenseSummary = ({ period, start_date, end_date } = {}) => {
+  const params = {};
+  if (start_date && end_date) {
+    params.start_date = start_date;
+    params.end_date = end_date;
+  } else {
+    params.period = period || "month";
+  }
+  return api.get("/api/expenses/summary", { params }).then((r) => r.data);
+};
 
 export const getSubscriptions = () =>
   api.get("/api/expenses/subscriptions").then((r) => r.data);
@@ -26,8 +34,16 @@ export const getSubscriptions = () =>
 export const getSources = () =>
   api.get("/api/expenses/sources").then((r) => r.data);
 
-export const getNetworth = (period) =>
-  api.get("/api/expenses/networth", { params: period ? { period } : {} }).then((r) => r.data);
+export const getNetworth = ({ period, start_date, end_date } = {}) => {
+  const params = {};
+  if (start_date && end_date) {
+    params.start_date = start_date;
+    params.end_date = end_date;
+  } else if (period) {
+    params.period = period;
+  }
+  return api.get("/api/expenses/networth", { params }).then((r) => r.data);
+};
 
 // Budget
 export const getBudget = () =>

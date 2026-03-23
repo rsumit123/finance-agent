@@ -52,10 +52,14 @@ def get_expenses(
 
 @router.get("/summary", response_model=ExpenseSummary)
 def expense_summary(
-    period: str = Query("month", pattern="^(week|month)$"),
+    period: Optional[str] = Query(None, pattern="^(week|month)$"),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
 ):
-    if period == "week":
+    if start_date and end_date:
+        start, end = start_date, end_date
+    elif period == "week":
         start, end = get_current_week_range()
     else:
         start, end = get_current_month_range()
@@ -172,14 +176,14 @@ def _month_label(month: str) -> str:
 @router.get("/networth")
 def get_networth(
     period: Optional[str] = Query(None, pattern="^(week|month)$"),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Calculate financial summary.
-
-    If period is set, returns for that period. Otherwise all time.
-    CC outstanding is always all-time (debt doesn't reset monthly).
-    """
-    if period == "week":
+    """Calculate financial summary for a period. CC outstanding is always all-time."""
+    if start_date and end_date:
+        q = db.query(Expense).filter(Expense.date >= start_date, Expense.date <= end_date)
+    elif period == "week":
         start, end = get_current_week_range()
         q = db.query(Expense).filter(Expense.date >= start, Expense.date <= end)
     elif period == "month":

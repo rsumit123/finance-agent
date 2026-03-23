@@ -247,8 +247,29 @@ export default function UploadPage() {
             )}
             {stmtResult?.error && <ErrorMsg msg={stmtResult.error} />}
 
-            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 10 }}>
-              CC payments/refunds are tracked separately from income. Only bank account credits count as income.
+            {/* Supported banks info */}
+            <div style={{ background: "var(--bg-input)", borderRadius: 8, padding: "10px 14px", marginTop: 14, fontSize: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--text-dim)" }}>Supported Banks</div>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+                {[
+                  { name: "HDFC", alerts: true, statements: true },
+                  { name: "Axis", alerts: false, statements: true },
+                  { name: "Scapia", alerts: true, statements: false },
+                  { name: "ICICI", alerts: false, statements: true },
+                  { name: "Kotak", alerts: false, statements: true },
+                  { name: "SBI", alerts: false, statements: true },
+                ].map((b) => (
+                  <span key={b.name} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(99,102,241,0.1)", color: "var(--accent)", fontSize: 11 }}>
+                    {b.name}
+                    {b.alerts && " ✉"}
+                    {b.statements && " 📄"}
+                  </span>
+                ))}
+              </div>
+              <div style={{ color: "var(--text-dim)", lineHeight: 1.5, fontSize: 11 }}>
+                ✉ = Email alerts parsed &nbsp; 📄 = PDF statements parsed<br />
+                CC payments/refunds tracked separately from income.
+              </div>
             </div>
           </div>
         ) : (
