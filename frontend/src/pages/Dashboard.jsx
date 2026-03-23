@@ -206,12 +206,6 @@ export default function Dashboard() {
               <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Spent</div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{formatINR(networth.total_spent)}</div>
             </div>
-            {networth.total_transfers > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Transfers</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-dim)" }}>{formatINR(networth.total_transfers)}</div>
-              </div>
-            )}
             {networth.total_cc_debt > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>CC Outstanding (All Time)</div>
@@ -238,9 +232,9 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="label">Spent</div>
+          <div className="label">Spent (excl. transfers)</div>
           <div className="value">{formatINR(summary?.expense)}</div>
-          <div className="sub">{summary?.count || 0} transactions</div>
+          <div className="sub">{summary?.count || 0} transactions{summary?.transfers > 0 ? ` · ${formatINR(summary.transfers)} in transfers` : ""}</div>
         </div>
         {summary?.income > 0 && (
           <div className="stat-card">
@@ -303,10 +297,10 @@ export default function Dashboard() {
                     onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-input)"}
                     onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, opacity: item.name === "transfer" ? 0.5 : 1 }}>
                       <span style={{ fontSize: 13, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                        {item.name}
+                        {item.name}{item.name === "transfer" ? " (not counted as spend)" : ""}
                       </span>
                       <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                         {formatINR(item.value)}
