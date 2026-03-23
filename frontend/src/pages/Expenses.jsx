@@ -258,8 +258,8 @@ export default function Expenses() {
         )}
         <select value={txnTypeFilter} onChange={(e) => setTxnTypeFilter(e.target.value)} style={{ padding: "6px 10px", fontSize: 12, minHeight: 34, width: "auto", minWidth: 0, flex: "0 1 auto" }}>
           <option value="">Type</option>
-          <option value="debit">Expenses</option>
-          <option value="credit">Income</option>
+          <option value="debit">Debits (spent)</option>
+          <option value="credit">Credits (refunds/salary)</option>
         </select>
         {hasActiveFilters && (
           <button className="secondary" onClick={() => { setCategoryFilter(""); setBankFilter(""); setTxnTypeFilter(""); setSearch(""); }} style={{ padding: "4px 10px", fontSize: 11, minHeight: 34 }}>
