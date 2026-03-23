@@ -276,7 +276,9 @@ export default function StatementsPage() {
 }
 
 function _groupToSourceFilter(group) {
-  // Map source_type + account_type back to source field prefix
+  // Use the exact source value from the API if available
+  if (group.source_filter) return group.source_filter;
+  // Fallback reconstruction
   const bank = group.bank.toLowerCase();
   if (group.source_type === "gmail_alert") return "email_" + bank;
   if (group.source_type === "gmail_statement") {

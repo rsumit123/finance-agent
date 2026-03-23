@@ -109,11 +109,15 @@ def get_sources(
         debits = sum(a for a in amounts if a > 0)
         neg_total = abs(sum(a for a in amounts if a < 0))
 
+        # Get the actual source value for filtering
+        raw_source = txns[0].source if txns else ""
+
         is_cc = account_type == "Credit Card"
         result.append({
             "bank": bank,
             "account_type": account_type,
             "source_type": source_type,
+            "source_filter": raw_source,
             "month": month,
             "month_label": _month_label(month),
             "transaction_count": len(txns),
@@ -141,7 +145,12 @@ def _source_to_bank(source: str) -> str:
     if "sbi" in source:
         return "SBI"
     if source.startswith("stmt_"):
-        return source.replace("stmt_", "").upper()
+        name = source.replace("stmt_", "")
+        # Remove _cc or _bank suffix
+        for suffix in ("_cc", "_bank"):
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+        return name.upper()
     if source == "upi_pdf":
         return "PhonePe/UPI"
     if source == "credit_card_pdf":
