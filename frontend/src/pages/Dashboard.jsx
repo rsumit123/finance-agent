@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
-} from "recharts";
+// Charts replaced with native CSS bars for better mobile UX
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth } from "../api/client";
 
@@ -108,11 +106,11 @@ export default function Dashboard() {
   };
 
   const categoryData = summary
-    ? Object.entries(summary.by_category).map(([name, value]) => ({ name, value }))
+    ? Object.entries(summary.by_category).map(([name, value]) => ({ name, value })).filter(d => d.value > 0)
     : [];
 
   const paymentData = summary
-    ? Object.entries(summary.by_payment_method).map(([name, value]) => ({ name: name.replace("_", " "), value }))
+    ? Object.entries(summary.by_payment_method).map(([name, value]) => ({ name: name.replace(/_/g, " "), value })).filter(d => d.value > 0)
     : [];
 
   if (loading) {
@@ -268,47 +266,65 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Charts */}
-      <div className="grid-2">
-        <div className="card">
-          <h2>Spending by Category</h2>
-          {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={320}>
-              <PieChart>
-                <Pie data={categoryData} cx="50%" cy="45%" outerRadius={80} dataKey="value" label={false}>
-                  {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v) => formatINR(v)} />
-                <Legend verticalAlign="bottom" iconType="circle" iconSize={8}
-                  formatter={(value) => {
-                    const item = categoryData.find(d => d.name === value);
-                    return `${value} (${formatINR(item?.value)})`;
-                  }}
-                  wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <p style={{ color: "var(--text-dim)" }}>No expenses for this period</p>
-          )}
-        </div>
-
-        <div className="card">
-          <h2>By Payment Method</h2>
-          {paymentData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={paymentData} margin={{ left: -20, right: 8 }}>
-                <XAxis dataKey="name" stroke="var(--text-dim)" fontSize={11} tick={{ fill: "var(--text-dim)" }} />
-                <YAxis stroke="var(--text-dim)" fontSize={11} tick={{ fill: "var(--text-dim)" }} width={50} />
-                <Tooltip formatter={(v) => formatINR(v)} />
-                <Bar dataKey="value" fill="var(--accent)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p style={{ color: "var(--text-dim)" }}>No expenses for this period</p>
-          )}
-        </div>
+      {/* Category Breakdown — horizontal bars instead of pie chart */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h2>Spending by Category</h2>
+        {categoryData.length > 0 ? (
+          <div>
+            {categoryData
+              .sort((a, b) => b.value - a.value)
+              .map((item, i) => {
+                const maxVal = categoryData[0]?.value || 1;
+                const pct = ((item.value / (summary?.expense || 1)) * 100).toFixed(0);
+                return (
+                  <div key={item.name} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS[i % COLORS.length], flexShrink: 0 }} />
+                        {item.name}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>
+                        {formatINR(item.value)}
+                        <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 400, marginLeft: 4 }}>{pct}%</span>
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--bg-input)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%", borderRadius: 3,
+                        width: `${(item.value / maxVal) * 100}%`,
+                        background: COLORS[i % COLORS.length],
+                        transition: "width 0.3s",
+                      }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <p style={{ color: "var(--text-dim)" }}>No expenses for this period</p>
+        )}
       </div>
+
+      {/* Payment Method — compact pills instead of bar chart */}
+      {paymentData.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>By Payment Method</h2>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {paymentData
+              .sort((a, b) => b.value - a.value)
+              .map((item, i) => (
+                <div key={item.name} style={{
+                  flex: "1 1 auto", minWidth: 100,
+                  background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{formatINR(item.value)}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, textTransform: "capitalize" }}>{item.name}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Recurring Payments */}
       {subscriptions.length > 0 && (
