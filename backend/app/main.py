@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import init_db
-from .routers import advisor, budgets, expenses, gmail, settings, upload
+from .routers import advisor, auth, budgets, expenses, gmail, settings, upload
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(expenses.router)
 app.include_router(budgets.router)
 app.include_router(upload.router)

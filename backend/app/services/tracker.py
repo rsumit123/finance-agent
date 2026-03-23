@@ -56,7 +56,7 @@ def _is_duplicate(new: ExpenseCreate, existing: Expense) -> bool:
 
 
 def create_expenses_bulk_dedup(
-    db: Session, items: list[ExpenseCreate]
+    db: Session, items: list[ExpenseCreate], user_id: int
 ) -> tuple[list[Expense], list[ExpenseCreate]]:
     """Create expenses in bulk, skipping duplicates.
 
@@ -70,9 +70,10 @@ def create_expenses_bulk_dedup(
     min_date = min(dates)
     max_date = max(dates) + timedelta(days=1)  # +1 day to include all times on max_date
 
-    # Fetch existing expenses in that date range
+    # Fetch existing expenses in that date range for this user
     existing = (
         db.query(Expense)
+        .filter(Expense.user_id == user_id)
         .filter(Expense.date >= min_date, Expense.date < max_date)
         .all()
     )
@@ -89,7 +90,11 @@ def create_expenses_bulk_dedup(
             new_items.append(item)
 
     # Insert non-duplicates
-    expenses = [Expense(**d.model_dump()) for d in new_items]
+    expenses = []
+    for d in new_items:
+        expense = Expense(**d.model_dump())
+        expense.user_id = user_id
+        expenses.append(expense)
     if expenses:
         db.add_all(expenses)
         db.commit()
@@ -99,16 +104,21 @@ def create_expenses_bulk_dedup(
     return expenses, duplicates
 
 
-def create_expense(db: Session, data: ExpenseCreate) -> Expense:
+def create_expense(db: Session, data: ExpenseCreate, user_id: int) -> Expense:
     expense = Expense(**data.model_dump())
+    expense.user_id = user_id
     db.add(expense)
     db.commit()
     db.refresh(expense)
     return expense
 
 
-def create_expenses_bulk(db: Session, items: list[ExpenseCreate]) -> list[Expense]:
-    expenses = [Expense(**d.model_dump()) for d in items]
+def create_expenses_bulk(db: Session, items: list[ExpenseCreate], user_id: int) -> list[Expense]:
+    expenses = []
+    for d in items:
+        expense = Expense(**d.model_dump())
+        expense.user_id = user_id
+        expenses.append(expense)
     db.add_all(expenses)
     db.commit()
     for e in expenses:
@@ -116,12 +126,12 @@ def create_expenses_bulk(db: Session, items: list[ExpenseCreate]) -> list[Expens
     return expenses
 
 
-def get_expense(db: Session, expense_id: int) -> Expense | None:
-    return db.query(Expense).filter(Expense.id == expense_id).first()
+def get_expense(db: Session, expense_id: int, user_id: int) -> Expense | None:
+    return db.query(Expense).filter(Expense.id == expense_id, Expense.user_id == user_id).first()
 
 
-def delete_expense(db: Session, expense_id: int) -> bool:
-    expense = get_expense(db, expense_id)
+def delete_expense(db: Session, expense_id: int, user_id: int) -> bool:
+    expense = get_expense(db, expense_id, user_id)
     if not expense:
         return False
     db.delete(expense)
@@ -138,8 +148,11 @@ def list_expenses(
     source: str | None = None,
     limit: int = 100,
     offset: int = 0,
+    user_id: int = None,
 ) -> list[Expense]:
     q = db.query(Expense)
+    if user_id is not None:
+        q = q.filter(Expense.user_id == user_id)
     if start_date:
         q = q.filter(Expense.date >= start_date)
     if end_date:
@@ -169,55 +182,56 @@ def get_current_month_range() -> tuple[date, date]:
     return start, today
 
 
-def get_period_total(db: Session, start_date: date, end_date: date) -> float:
-    result = (
-        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.date >= start_date, Expense.date <= end_date)
-        .scalar()
+def get_period_total(db: Session, start_date: date, end_date: date, user_id: int = None) -> float:
+    q = db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
+        Expense.date >= start_date, Expense.date <= end_date
     )
+    if user_id is not None:
+        q = q.filter(Expense.user_id == user_id)
+    result = q.scalar()
     return float(result)
 
 
 def get_period_total_by_category(
-    db: Session, start_date: date, end_date: date
+    db: Session, start_date: date, end_date: date, user_id: int = None
 ) -> dict[str, float]:
-    rows = (
-        db.query(Expense.category, func.sum(Expense.amount))
-        .filter(Expense.date >= start_date, Expense.date <= end_date)
-        .group_by(Expense.category)
-        .all()
+    q = db.query(Expense.category, func.sum(Expense.amount)).filter(
+        Expense.date >= start_date, Expense.date <= end_date
     )
+    if user_id is not None:
+        q = q.filter(Expense.user_id == user_id)
+    rows = q.group_by(Expense.category).all()
     return {cat: float(total) for cat, total in rows}
 
 
 def get_period_total_by_payment(
-    db: Session, start_date: date, end_date: date
+    db: Session, start_date: date, end_date: date, user_id: int = None
 ) -> dict[str, float]:
-    rows = (
-        db.query(Expense.payment_method, func.sum(Expense.amount))
-        .filter(Expense.date >= start_date, Expense.date <= end_date)
-        .group_by(Expense.payment_method)
-        .all()
+    q = db.query(Expense.payment_method, func.sum(Expense.amount)).filter(
+        Expense.date >= start_date, Expense.date <= end_date
     )
+    if user_id is not None:
+        q = q.filter(Expense.user_id == user_id)
+    rows = q.group_by(Expense.payment_method).all()
     return {method: float(total) for method, total in rows}
 
 
-def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSummary:
-    total = get_period_total(db, start_date, end_date)
-    count = (
-        db.query(func.count(Expense.id))
-        .filter(Expense.date >= start_date, Expense.date <= end_date)
-        .scalar()
+def summarize_period(db: Session, start_date: date, end_date: date, user_id: int = None) -> ExpenseSummary:
+    total = get_period_total(db, start_date, end_date, user_id=user_id)
+    q_count = db.query(func.count(Expense.id)).filter(
+        Expense.date >= start_date, Expense.date <= end_date
     )
+    if user_id is not None:
+        q_count = q_count.filter(Expense.user_id == user_id)
+    count = q_count.scalar()
 
     # Split income vs expenses
     # Transfers (category="transfer") are excluded from both income and expense
     # CC credits (payments, refunds) are NOT income
-    all_in_range = (
-        db.query(Expense)
-        .filter(Expense.date >= start_date, Expense.date <= end_date)
-        .all()
-    )
+    q_all = db.query(Expense).filter(Expense.date >= start_date, Expense.date <= end_date)
+    if user_id is not None:
+        q_all = q_all.filter(Expense.user_id == user_id)
+    all_in_range = q_all.all()
     # Income = salary category only (actual earnings)
     # Refunds, CC credits, transfers are NOT income
     income_amt = sum(abs(e.amount) for e in all_in_range if e.category == "salary")
@@ -232,8 +246,8 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
     expense = expense_amt
 
     # For charts: only positive amounts, exclude transfers
-    cat_data = get_period_total_by_category(db, start_date, end_date)
-    payment_data = get_period_total_by_payment(db, start_date, end_date)
+    cat_data = get_period_total_by_category(db, start_date, end_date, user_id=user_id)
+    payment_data = get_period_total_by_payment(db, start_date, end_date, user_id=user_id)
 
     cat_data = {k: v for k, v in cat_data.items() if v > 0}
     payment_data = {k: v for k, v in payment_data.items() if v > 0}
@@ -252,12 +266,19 @@ def summarize_period(db: Session, start_date: date, end_date: date) -> ExpenseSu
 # --- Budget ---
 
 
-def set_budget(db: Session, data: BudgetCreate) -> Budget:
-    # Replace existing budget (only one active budget)
-    db.query(CategoryBudget).delete()
-    db.query(Budget).delete()
+def set_budget(db: Session, data: BudgetCreate, user_id: int = None) -> Budget:
+    # Replace existing budget for this user (only one active budget per user)
+    q_budget = db.query(Budget)
+    if user_id is not None:
+        q_budget = q_budget.filter(Budget.user_id == user_id)
+    existing_budgets = q_budget.all()
+    for b in existing_budgets:
+        db.query(CategoryBudget).filter(CategoryBudget.budget_id == b.id).delete()
+    q_budget.delete()
 
     budget = Budget(monthly_limit=data.monthly_limit, weekly_limit=data.weekly_limit)
+    if user_id is not None:
+        budget.user_id = user_id
     db.add(budget)
     db.flush()
 
@@ -273,27 +294,30 @@ def set_budget(db: Session, data: BudgetCreate) -> Budget:
     return budget
 
 
-def get_budget(db: Session) -> Budget | None:
-    return db.query(Budget).order_by(Budget.id.desc()).first()
+def get_budget(db: Session, user_id: int = None) -> Budget | None:
+    q = db.query(Budget)
+    if user_id is not None:
+        q = q.filter(Budget.user_id == user_id)
+    return q.order_by(Budget.id.desc()).first()
 
 
 def get_category_limits(db: Session, budget_id: int) -> list[CategoryBudget]:
     return db.query(CategoryBudget).filter(CategoryBudget.budget_id == budget_id).all()
 
 
-def get_budget_status(db: Session) -> BudgetStatus | None:
-    budget = get_budget(db)
+def get_budget_status(db: Session, user_id: int = None) -> BudgetStatus | None:
+    budget = get_budget(db, user_id=user_id)
     if not budget:
         return None
 
     week_start, week_end = get_current_week_range()
     month_start, month_end = get_current_month_range()
 
-    week_spent = get_period_total(db, week_start, week_end)
-    month_spent = get_period_total(db, month_start, month_end)
+    week_spent = get_period_total(db, week_start, week_end, user_id=user_id)
+    month_spent = get_period_total(db, month_start, month_end, user_id=user_id)
 
     cat_limits = get_category_limits(db, budget.id)
-    month_by_cat = get_period_total_by_category(db, month_start, month_end)
+    month_by_cat = get_period_total_by_category(db, month_start, month_end, user_id=user_id)
 
     categories = {}
     for cl in cat_limits:

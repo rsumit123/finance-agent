@@ -6,8 +6,9 @@ import tempfile
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from ..auth import get_current_user
 from ..database import get_db
-from ..models import UploadHistory
+from ..models import UploadHistory, User
 from ..parsers import (
     detect_and_parse,
     parse_bank_statement,
@@ -33,6 +34,7 @@ async def upload_statement(
         description="PDF password (for password-protected statements)",
     ),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Upload a bank/credit card/UPI statement PDF and parse transactions."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -70,7 +72,7 @@ async def upload_statement(
 
     # Save transactions to DB with dedup
     if parsed:
-        expenses, duplicates = create_expenses_bulk_dedup(db, parsed)
+        expenses, duplicates = create_expenses_bulk_dedup(db, parsed, user_id=current_user.id)
     else:
         expenses, duplicates = [], []
 
@@ -93,6 +95,7 @@ async def upload_statement(
         filename=file.filename,
         file_type=detected_type,
         transactions_found=len(expenses),
+        user_id=current_user.id,
     )
     db.add(history)
     db.commit()
@@ -111,6 +114,7 @@ async def upload_statement(
 async def debug_pdf(
     file: UploadFile = File(...),
     password: str = Query(""),
+    current_user: User = Depends(get_current_user),
 ):
     """Debug endpoint: returns raw extracted text and tables from a PDF."""
     import pdfplumber
@@ -139,10 +143,14 @@ async def debug_pdf(
 
 
 @router.get("/history")
-def upload_history(db: Session = Depends(get_db)):
+def upload_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get list of previously uploaded statements."""
     return (
         db.query(UploadHistory)
+        .filter(UploadHistory.user_id == current_user.id)
         .order_by(UploadHistory.uploaded_at.desc())
         .limit(50)
         .all()

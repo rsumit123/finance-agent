@@ -51,17 +51,21 @@ def _normalize_merchant(description: str) -> str:
     return " ".join(words[:3]).title() if words else desc_lower.title()
 
 
-def detect_subscriptions(db: Session) -> list[Subscription]:
+def detect_subscriptions(db: Session, user_id: int) -> list[Subscription]:
     """Detect recurring/subscription payments from expense history.
 
     A subscription is defined as:
     - Same merchant appearing in 2+ different months
     - Amounts within 20% variance of each other
+
+    Args:
+        user_id: The ID of the user whose expenses to analyze.
     """
     # Get all expenses from the last 6 months
     cutoff = date.today() - timedelta(days=180)
     expenses = (
         db.query(Expense)
+        .filter(Expense.user_id == user_id)
         .filter(Expense.date >= cutoff)
         .order_by(Expense.date.desc())
         .all()

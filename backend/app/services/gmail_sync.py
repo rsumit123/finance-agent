@@ -107,16 +107,17 @@ def _get_header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def sync_emails(db: Session, after_date: str = None, before_date: str = None) -> dict:
+def sync_emails(db: Session, user_id: int, after_date: str = None, before_date: str = None) -> dict:
     """Fetch new bank alert emails from Gmail and parse into transactions.
 
     Args:
+        user_id: The ID of the user whose Gmail account to sync.
         after_date: Custom start date (YYYY-MM-DD). Overrides last_sync logic.
         before_date: Custom end date (YYYY-MM-DD).
 
     Returns: { imported, duplicates, emails_scanned, alerts_by_bank, date_range, error }
     """
-    account = db.query(GmailAccount).first()
+    account = db.query(GmailAccount).filter(GmailAccount.user_id == user_id).first()
     if not account:
         return {"imported": 0, "duplicates": 0, "emails_scanned": 0, "alerts_by_bank": [], "date_range": {}, "error": "Gmail not connected"}
 
@@ -208,7 +209,7 @@ def sync_emails(db: Session, after_date: str = None, before_date: str = None) ->
 
     # Dedup and save
     if parsed_expenses:
-        imported, duplicates = create_expenses_bulk_dedup(db, parsed_expenses)
+        imported, duplicates = create_expenses_bulk_dedup(db, parsed_expenses, user_id)
         imported_count = len(imported)
         dup_count = len(duplicates)
     else:
@@ -235,18 +236,21 @@ def sync_emails(db: Session, after_date: str = None, before_date: str = None) ->
     }
 
 
-def sync_statements(db: Session) -> dict:
+def sync_statements(db: Session, user_id: int) -> dict:
     """Find CC/bank statement PDF attachments in Gmail, download and parse them.
 
     Searches for emails with subjects like 'credit card statement', 'account statement'
     that have PDF attachments. Downloads each PDF, tries saved passwords, and parses.
+
+    Args:
+        user_id: The ID of the user whose Gmail account to sync.
 
     Returns: { statements_found, imported, duplicates, error }
     """
     import os
     import tempfile
 
-    account = db.query(GmailAccount).first()
+    account = db.query(GmailAccount).filter(GmailAccount.user_id == user_id).first()
     if not account:
         return {"statements_found": 0, "imported": 0, "duplicates": 0, "error": "Gmail not connected"}
 
@@ -264,7 +268,7 @@ def sync_statements(db: Session) -> dict:
     service = build("gmail", "v1", credentials=creds)
 
     # Get saved passwords
-    passwords = [pw.password for pw in db.query(PdfPassword).all()]
+    passwords = [pw.password for pw in db.query(PdfPassword).filter(PdfPassword.user_id == user_id).all()]
     # Always try None (no password) first
     passwords_to_try = [None] + passwords
 
@@ -404,7 +408,7 @@ def sync_statements(db: Session) -> dict:
 
     # Dedup and save
     if all_parsed:
-        imported, duplicates = create_expenses_bulk_dedup(db, all_parsed)
+        imported, duplicates = create_expenses_bulk_dedup(db, all_parsed, user_id)
         return {
             "statements_found": statements_found,
             "imported": len(imported),

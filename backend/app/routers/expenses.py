@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from collections import defaultdict
 
+from ..auth import get_current_user
 from ..database import get_db
-from ..models import Expense
+from ..models import Expense, User
 from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary, Subscription
 from ..services.subscriptions import detect_subscriptions
 from ..services.tracker import (
@@ -27,8 +28,12 @@ router = APIRouter(prefix="/api/expenses", tags=["expenses"])
 
 
 @router.post("/", response_model=ExpenseOut)
-def add_expense(data: ExpenseCreate, db: Session = Depends(get_db)):
-    return create_expense(db, data)
+def add_expense(
+    data: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return create_expense(db, data, user_id=current_user.id)
 
 
 @router.get("/", response_model=list[ExpenseOut])
@@ -42,13 +47,14 @@ def get_expenses(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if period == "week":
         start_date, end_date = get_current_week_range()
     elif period == "month":
         start_date, end_date = get_current_month_range()
 
-    return list_expenses(db, start_date, end_date, category, payment_method, source, limit, offset)
+    return list_expenses(db, start_date, end_date, category, payment_method, source, limit, offset, user_id=current_user.id)
 
 
 @router.get("/summary", response_model=ExpenseSummary)
@@ -57,6 +63,7 @@ def expense_summary(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if start_date and end_date:
         start, end = start_date, end_date
@@ -64,17 +71,25 @@ def expense_summary(
         start, end = get_current_week_range()
     else:
         start, end = get_current_month_range()
-    return summarize_period(db, start, end)
+    return summarize_period(db, start, end, user_id=current_user.id)
 
 
 @router.get("/sources")
-def get_sources(db: Session = Depends(get_db)):
+def get_sources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get all transaction sources grouped by bank and month.
 
     Returns a list of source groups with transaction count, total amount,
     date range, and bank identification.
     """
-    expenses = db.query(Expense).order_by(Expense.date.desc()).all()
+    expenses = (
+        db.query(Expense)
+        .filter(Expense.user_id == current_user.id)
+        .order_by(Expense.date.desc())
+        .all()
+    )
 
     # Group by (bank, account_type, source_type, month)
     groups: dict[tuple, list] = defaultdict(list)
@@ -180,18 +195,19 @@ def get_networth(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Calculate financial summary for a period. CC outstanding is always all-time."""
     if start_date and end_date:
-        q = db.query(Expense).filter(Expense.date >= start_date, Expense.date <= end_date)
+        q = db.query(Expense).filter(Expense.user_id == current_user.id, Expense.date >= start_date, Expense.date <= end_date)
     elif period == "week":
         start, end = get_current_week_range()
-        q = db.query(Expense).filter(Expense.date >= start, Expense.date <= end)
+        q = db.query(Expense).filter(Expense.user_id == current_user.id, Expense.date >= start, Expense.date <= end)
     elif period == "month":
         start, end = get_current_month_range()
-        q = db.query(Expense).filter(Expense.date >= start, Expense.date <= end)
+        q = db.query(Expense).filter(Expense.user_id == current_user.id, Expense.date >= start, Expense.date <= end)
     else:
-        q = db.query(Expense)
+        q = db.query(Expense).filter(Expense.user_id == current_user.id)
 
     expenses = q.all()
     if not expenses:
@@ -245,7 +261,7 @@ def get_networth(
         total_cc_debt += max(outstanding, 0)
 
     # CC outstanding is always calculated from ALL data (debt persists)
-    all_cc_expenses = db.query(Expense).all()
+    all_cc_expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
     cc_charges_all: dict[str, float] = defaultdict(float)
     cc_payments_all: dict[str, float] = defaultdict(float)
     for e in all_cc_expenses:
@@ -284,6 +300,7 @@ def get_insights(
     end_date: Optional[date] = Query(None),
     period: Optional[str] = Query(None, pattern="^(week|month)$"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Generate spending insights for a period."""
     from collections import Counter
@@ -297,7 +314,7 @@ def get_insights(
 
     expenses = (
         db.query(Expense)
-        .filter(Expense.date >= s, Expense.date <= e, Expense.amount > 0)
+        .filter(Expense.user_id == current_user.id, Expense.date >= s, Expense.date <= e, Expense.amount > 0)
         .all()
     )
 
@@ -356,7 +373,7 @@ def get_insights(
     prev_e = s - timedelta(days=1)
     prev_total = float(
         db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.date >= prev_s, Expense.date <= prev_e, Expense.amount > 0, Expense.category != "transfer")
+        .filter(Expense.user_id == current_user.id, Expense.date >= prev_s, Expense.date <= prev_e, Expense.amount > 0, Expense.category != "transfer")
         .scalar()
     )
     current_total = sum(x.amount for x in real)
@@ -402,15 +419,23 @@ def _fmt(n):
 
 
 @router.get("/subscriptions", response_model=list[Subscription])
-def get_subscriptions(db: Session = Depends(get_db)):
+def get_subscriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Detect recurring/subscription payments from expense history."""
-    return detect_subscriptions(db)
+    return detect_subscriptions(db, user_id=current_user.id)
 
 
 @router.patch("/{expense_id}", response_model=ExpenseOut)
-def update_expense(expense_id: int, updates: dict, db: Session = Depends(get_db)):
+def update_expense(
+    expense_id: int,
+    updates: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Update specific fields on an expense (e.g. category)."""
-    expense = get_expense(db, expense_id)
+    expense = get_expense(db, expense_id, user_id=current_user.id)
     if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
@@ -425,7 +450,11 @@ def update_expense(expense_id: int, updates: dict, db: Session = Depends(get_db)
 
 
 @router.delete("/{expense_id}")
-def remove_expense(expense_id: int, db: Session = Depends(get_db)):
-    if not delete_expense(db, expense_id):
+def remove_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not delete_expense(db, expense_id, user_id=current_user.id):
         raise HTTPException(status_code=404, detail="Expense not found")
     return {"message": "Expense deleted"}

@@ -21,9 +21,10 @@ def analyze_purchase(
     db: Session,
     amount: float,
     category: str | None = None,
+    user_id: int = None,
 ) -> PurchaseVerdict:
     """Analyze whether a purchase is affordable given current spending."""
-    budget = get_budget(db)
+    budget = get_budget(db, user_id)
     reasons = []
     warnings = []
     can_buy = True
@@ -42,8 +43,8 @@ def analyze_purchase(
     week_start, week_end = get_current_week_range()
     month_start, month_end = get_current_month_range()
 
-    week_spent = get_period_total(db, week_start, week_end)
-    month_spent = get_period_total(db, month_start, month_end)
+    week_spent = get_period_total(db, week_start, week_end, user_id)
+    month_spent = get_period_total(db, month_start, month_end, user_id)
 
     week_remaining = budget.weekly_limit - week_spent
     month_remaining = budget.monthly_limit - month_spent
@@ -83,7 +84,7 @@ def analyze_purchase(
         cat_limit_map = {cl.category: cl.limit_amount for cl in cat_limits}
         if category in cat_limit_map:
             cat_limit = cat_limit_map[category]
-            month_by_cat = get_period_total_by_category(db, month_start, month_end)
+            month_by_cat = get_period_total_by_category(db, month_start, month_end, user_id)
             cat_spent = month_by_cat.get(category, 0.0)
             cat_remaining = cat_limit - cat_spent
             if amount > cat_remaining:

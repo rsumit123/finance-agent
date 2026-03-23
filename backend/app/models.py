@@ -1,4 +1,4 @@
-"""SQLAlchemy models for expenses, budgets, and parsed statements."""
+"""SQLAlchemy models for users, expenses, budgets, and parsed statements."""
 
 import enum
 from datetime import date, datetime
@@ -16,6 +16,17 @@ from sqlalchemy import (
 )
 
 from .database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    google_id = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), default="")
+    picture = Column(String(500), default="")
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class PaymentMethod(str, enum.Enum):
@@ -48,12 +59,13 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String(50), nullable=False, default=Category.OTHER.value)
     payment_method = Column(String(50), nullable=False)
     description = Column(Text, default="")
     date = Column(DateTime, nullable=False)
-    source = Column(String(50), default="manual")  # manual, bank_pdf, credit_card_pdf, upi
+    source = Column(String(50), default="manual")
     reference_id = Column(String(100), default="")
     created_at = Column(DateTime, server_default=func.now())
 
@@ -62,6 +74,7 @@ class Budget(Base):
     __tablename__ = "budgets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
     monthly_limit = Column(Float, nullable=False)
     weekly_limit = Column(Float, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
@@ -80,7 +93,8 @@ class PdfPassword(Base):
     __tablename__ = "pdf_passwords"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    label = Column(String(100), default="")  # e.g. "HDFC CC", "DOB"
+    user_id = Column(Integer, nullable=False)
+    label = Column(String(100), default="")
     password = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -89,6 +103,7 @@ class GmailAccount(Base):
     __tablename__ = "gmail_accounts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
     email = Column(String(255), nullable=False)
     access_token = Column(Text, nullable=False)
     refresh_token = Column(Text, nullable=False)
@@ -101,7 +116,8 @@ class UploadHistory(Base):
     __tablename__ = "upload_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
     filename = Column(String(255), nullable=False)
-    file_type = Column(String(50), nullable=False)  # bank_statement, credit_card, upi
+    file_type = Column(String(50), nullable=False)
     transactions_found = Column(Integer, default=0)
     uploaded_at = Column(DateTime, server_default=func.now())
