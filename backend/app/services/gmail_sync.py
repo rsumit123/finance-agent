@@ -361,12 +361,15 @@ def sync_statements(db: Session) -> dict:
                         else:
                             fail_reason = f"Opened as {detected_type} but 0 transactions parsed — format may not be supported"
                     except Exception as parse_err:
+                        import traceback
                         err_msg = str(parse_err).lower()
-                        if "password" in err_msg or "encrypted" in err_msg or "decrypt" in err_msg:
+                        full_err = traceback.format_exception_only(type(parse_err), parse_err)
+                        err_detail = "".join(full_err).strip()
+                        if "password" in err_msg or "encrypted" in err_msg or "decrypt" in err_msg or "FileNotDecryptedError" in err_detail:
                             continue  # Wrong password, try next
                         else:
                             opened = True
-                            fail_reason = f"Parse error: {str(parse_err)[:100]}"
+                            fail_reason = f"Parse error: {err_detail[:150]}"
                             break
             finally:
                 os.unlink(tmp_path)
