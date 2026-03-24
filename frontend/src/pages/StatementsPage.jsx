@@ -1,29 +1,16 @@
 import { useState, useEffect } from "react";
-import { CreditCard, Mail, FileText, PenLine, ChevronRight, ArrowLeft } from "lucide-react";
-import { getSources, getExpenses } from "../api/client";
+import { CreditCard, Landmark, Mail, FileText, PenLine, ChevronRight, ChevronDown, ChevronUp, ArrowLeft, Info } from "lucide-react";
+import { getSources, getExpenses, getNetworth } from "../api/client";
 
-const SOURCE_ICONS = {
-  gmail_alert: Mail,
-  gmail_statement: FileText,
-  pdf_upload: FileText,
-  manual: PenLine,
+const BANK_COLORS = {
+  HDFC: "#004b87", Axis: "#97144d", Scapia: "#6366f1",
+  ICICI: "#f58220", SBI: "#22409a", KOTAK: "#ed1c24",
+  "PhonePe/UPI": "#5f259f", Manual: "#22c55e",
 };
 
 const SOURCE_LABELS = {
-  gmail_alert: "Gmail Alerts",
-  gmail_statement: "Gmail Statements",
-  pdf_upload: "PDF Upload",
-  manual: "Manual Entry",
-};
-
-const BANK_COLORS = {
-  HDFC: "#004b87",
-  Axis: "#97144d",
-  Scapia: "#6366f1",
-  ICICI: "#f58220",
-  SBI: "#22409a",
-  "PhonePe/UPI": "#5f259f",
-  Manual: "#22c55e",
+  gmail_alert: "Gmail Alerts", gmail_statement: "Gmail Statements",
+  pdf_upload: "PDF Upload", manual: "Manual Entry",
 };
 
 function formatINR(n) {
@@ -43,98 +30,87 @@ function formatTime(dateStr) {
 
 export default function StatementsPage() {
   const [sources, setSources] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [networth, setNetworth] = useState(null);
+  const [selectedCard, setSelectedCard] = useState(null); // bank+accountType key
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [txnLoading, setTxnLoading] = useState(false);
 
   useEffect(() => {
-    getSources().then(setSources).catch(() => {});
+    Promise.all([
+      getSources().then(setSources),
+      getNetworth().then(setNetworth),
+    ]).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const handleViewGroup = async (group) => {
-    setSelectedGroup(group);
-    setLoading(true);
-    try {
-      // Use the month to calculate date range (more reliable than min/max dates)
-      const [year, month] = group.month.split("-");
-      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-      const startDate = `${group.month}-01`;
-      const endDate = `${group.month}-${lastDay}`;
+  // Build card groups
+  const cards = {};
+  sources.forEach((s) => {
+    const key = `${s.bank}_${s.account_type}`;
+    if (!cards[key]) {
+      cards[key] = {
+        bank: s.bank, accountType: s.account_type, isCreditCard: s.is_credit_card,
+        months: [], totalDebits: 0, totalPayments: 0, totalCredits: 0, totalTxns: 0,
+      };
+    }
+    cards[key].months.push(s);
+    cards[key].totalDebits += (s.total_debits || 0);
+    cards[key].totalPayments += (s.total_payments || 0);
+    cards[key].totalCredits += (s.total_credits || 0);
+    cards[key].totalTxns += s.transaction_count;
+  });
 
+  // Get current month spend per card
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const handleViewMonth = async (monthData) => {
+    setSelectedMonth(monthData);
+    setTxnLoading(true);
+    try {
+      const [year, month] = monthData.month.split("-");
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
       const data = await getExpenses({
-        start_date: startDate,
-        end_date: endDate,
-        source: _groupToSourceFilter(group),
+        start_date: `${monthData.month}-01`,
+        end_date: `${monthData.month}-${lastDay}`,
+        source: monthData.source_filter,
         limit: 500,
       });
       setTransactions(data);
-    } catch (err) {
-      console.error("Failed to fetch transactions:", err);
-      setTransactions([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { setTransactions([]); }
+    finally { setTxnLoading(false); }
   };
 
-  const handleBack = () => {
-    setSelectedGroup(null);
-    setTransactions([]);
-  };
+  if (loading) {
+    return (
+      <div>
+        <div className="page-header"><h1>Cards & Accounts</h1></div>
+        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+      </div>
+    );
+  }
 
-  // Group sources by bank + account type (CC vs Bank separate)
-  const bankGroups = {};
-  sources.forEach((s) => {
-    const key = `${s.bank}_${s.account_type || (s.is_credit_card ? "Credit Card" : "Bank Account")}`;
-    if (!bankGroups[key]) {
-      bankGroups[key] = {
-        bank: s.bank,
-        accountType: s.account_type || (s.is_credit_card ? "Credit Card" : "Bank Account"),
-        isCreditCard: s.is_credit_card,
-        sources: [], totalAmount: 0, totalTxns: 0,
-        totalDebits: 0, totalCredits: 0, totalPayments: 0,
-      };
-    }
-    bankGroups[key].sources.push(s);
-    bankGroups[key].totalDebits += (s.total_debits || 0);
-    bankGroups[key].totalCredits += (s.total_credits || 0);
-    bankGroups[key].totalPayments += (s.total_payments || 0);
-    bankGroups[key].totalAmount += s.total_amount;
-    bankGroups[key].totalTxns += s.transaction_count;
-  });
-
-  if (selectedGroup) {
+  // Transaction drill-down view
+  if (selectedMonth) {
     return (
       <div>
         <div className="page-header">
-          <button
-            className="secondary"
-            onClick={handleBack}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12, padding: "8px 14px" }}
-          >
+          <button className="secondary" onClick={() => { setSelectedMonth(null); setTransactions([]); }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12, padding: "8px 14px" }}>
             <ArrowLeft size={16} /> Back
           </button>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{
-              padding: "4px 12px", borderRadius: 6, fontSize: 14, fontWeight: 700,
-              background: (BANK_COLORS[selectedGroup.bank] || "#6b7280") + "22",
-              color: BANK_COLORS[selectedGroup.bank] || "#6b7280",
-            }}>
-              {selectedGroup.bank}
-            </span>
-            {selectedGroup.month_label}
-          </h1>
+          <h1>{selectedMonth.bank} · {selectedMonth.month_label}</h1>
           <p style={{ color: "var(--text-dim)", marginTop: 4 }}>
-            {selectedGroup.transaction_count} transactions · {formatINR(selectedGroup.total_debits || selectedGroup.total_amount)} spent
-            {selectedGroup.total_payments > 0 && ` · ${formatINR(selectedGroup.total_payments)} paid`}
-            {selectedGroup.total_credits > 0 && <span style={{ color: "var(--green)" }}> · +{formatINR(selectedGroup.total_credits)} received</span>}
-            {" · via "}{SOURCE_LABELS[selectedGroup.source_type] || selectedGroup.source_type}
+            {selectedMonth.transaction_count} transactions · {formatINR(selectedMonth.total_debits)} spent
+            {selectedMonth.total_payments > 0 && ` · ${formatINR(selectedMonth.total_payments)} paid`}
+            {selectedMonth.total_credits > 0 && <span style={{ color: "var(--green)" }}> · +{formatINR(selectedMonth.total_credits)}</span>}
           </p>
         </div>
-
-        {loading ? (
+        {txnLoading ? (
           <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
         ) : transactions.length === 0 ? (
-          <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>No transactions found for this period.</div>
+          <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>No transactions found.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {transactions.map((e) => {
@@ -142,39 +118,25 @@ export default function StatementsPage() {
               return (
                 <div key={e.id} style={{
                   background: "var(--bg-card)", border: "1px solid var(--border)",
-                  borderRadius: 10, padding: "12px 14px",
-                  display: "flex", alignItems: "center", gap: 12,
+                  borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {e.description || "—"}
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <span>{formatDate(e.date)}</span>
                       {time && <span>{time}</span>}
-                      <span style={{
-                        padding: "1px 6px", borderRadius: 4, fontSize: 10,
-                        background: "rgba(255,255,255,0.06)", textTransform: "capitalize",
-                      }}>
-                        {e.category}
-                      </span>
-                      <span style={{ padding: "1px 6px", borderRadius: 4, fontSize: 10, background: "rgba(255,255,255,0.06)" }}>
-                        {e.payment_method.replace("_", " ")}
-                      </span>
-                      {e.reference_id && (
-                        <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                          Ref: {e.reference_id.substring(0, 12)}...
-                        </span>
-                      )}
+                      <span style={{ padding: "1px 5px", borderRadius: 3, fontSize: 10, background: "rgba(255,255,255,0.06)", textTransform: "capitalize" }}>{e.category}</span>
                     </div>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, flexShrink: 0, color: e.amount < 0 ? (selectedGroup?.is_credit_card ? "var(--accent)" : "var(--green)") : "var(--text)" }}>
+                  <div style={{
+                    fontWeight: 700, fontSize: 14, flexShrink: 0,
+                    color: e.amount < 0 ? (selectedMonth.is_credit_card ? "var(--accent)" : "var(--green)") : "var(--text)",
+                  }}>
                     {e.amount < 0
-                      ? (selectedGroup?.is_credit_card
-                        ? formatINR(Math.abs(e.amount)) + " ↩"
-                        : "+" + formatINR(Math.abs(e.amount)))
-                      : formatINR(e.amount)
-                    }
+                      ? (selectedMonth.is_credit_card ? formatINR(Math.abs(e.amount)) + " ↩" : "+" + formatINR(Math.abs(e.amount)))
+                      : formatINR(e.amount)}
                   </div>
                 </div>
               );
@@ -185,106 +147,226 @@ export default function StatementsPage() {
     );
   }
 
+  // Main card view
+  const cardList = Object.values(cards);
+  const ccCards = cardList.filter(c => c.isCreditCard);
+  const bankCards = cardList.filter(c => !c.isCreditCard);
+
   return (
     <div>
       <div className="page-header">
-        <h1>Statements & Sources</h1>
-        <p>All your imported transaction data, organized by bank and month</p>
+        <h1>Cards & Accounts</h1>
+        <p style={{ color: "var(--text-dim)", marginTop: 4 }}>
+          {ccCards.length} credit card{ccCards.length !== 1 ? "s" : ""} · {bankCards.length} bank account{bankCards.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
-      {Object.keys(bankGroups).length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>
-          No transactions imported yet. Go to Import to get started.
-        </div>
-      ) : (
-        Object.values(bankGroups).map((bg) => {
-          const bankColor = BANK_COLORS[bg.bank] || "#6b7280";
-          return (
-            <div key={bg.bank} className="card" style={{ marginBottom: 16 }}>
-              {/* Bank header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 8,
-                    background: bankColor + "22", display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <CreditCard size={18} style={{ color: bankColor }} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>
-                      {bg.bank}
-                      <span style={{
-                        fontSize: 10, fontWeight: 600, marginLeft: 8, padding: "2px 8px", borderRadius: 4,
-                        background: bg.isCreditCard ? "rgba(236,72,153,0.15)" : "rgba(34,197,94,0.15)",
-                        color: bg.isCreditCard ? "#ec4899" : "var(--green)",
-                      }}>
-                        {bg.isCreditCard ? "Credit Card" : "Bank Account"}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                      {bg.totalTxns} txns · {formatINR(bg.totalDebits || 0)} spent
-                      {bg.totalPayments > 0 && <span> · {formatINR(bg.totalPayments)} paid</span>}
-                      {bg.totalCredits > 0 && <span style={{ color: "var(--green)" }}> · +{formatINR(bg.totalCredits)} received</span>}
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {/* Credit Cards */}
+      {ccCards.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Credit Cards</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {ccCards.map((card) => {
+              const color = BANK_COLORS[card.bank] || "#6b7280";
+              const outstanding = networth?.cc_outstanding?.[card.bank];
+              const thisMonthData = card.months.find(m => m.month === currentMonth);
+              const lastPayment = card.months
+                .filter(m => (m.total_payments || 0) > 0)
+                .sort((a, b) => b.month.localeCompare(a.month))[0];
+              const key = `${card.bank}_${card.accountType}`;
+              const expanded = selectedCard === key;
 
-              {/* Monthly breakdowns */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {bg.sources.map((s, i) => {
-                  const Icon = SOURCE_ICONS[s.source_type] || FileText;
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => handleViewGroup(s)}
-                      style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                        background: "var(--bg-input)", transition: "background 0.15s",
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--border)"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "var(--bg-input)"}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Icon size={14} style={{ color: "var(--text-dim)", flexShrink: 0 }} />
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 500 }}>{s.month_label}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                            {SOURCE_LABELS[s.source_type] || s.source_type} · {s.transaction_count} txns
-                          </div>
+              return (
+                <div key={key} style={{
+                  background: "var(--bg-card)", border: "1px solid var(--border)",
+                  borderRadius: 14, overflow: "hidden",
+                }}>
+                  {/* Card header — colored top bar */}
+                  <div style={{ background: color + "15", borderBottom: "1px solid var(--border)", padding: "16px 18px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <CreditCard size={18} style={{ color }} />
+                          <span style={{ fontSize: 16, fontWeight: 700 }}>{card.bank}</span>
+                          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: color + "22", color }}>Credit Card</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                          {card.totalTxns} transactions across {card.months.length} months
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>
-                          {formatINR(s.total_debits || s.total_amount)}
-                          {s.total_payments > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-dim)" }}> {formatINR(s.total_payments)} paid</span>}
-                          {s.total_credits > 0 && <span style={{ color: "var(--green)", fontWeight: 400, fontSize: 11 }}> +{formatINR(s.total_credits)}</span>}
-                        </span>
-                        <ChevronRight size={16} style={{ color: "var(--text-dim)" }} />
+                      {outstanding && (
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: outstanding.outstanding > 0 ? "var(--red)" : "var(--green)" }}>
+                            {outstanding.outstanding > 0 ? formatINR(outstanding.outstanding) : "Paid up"}
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>outstanding</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick stats */}
+                    <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                      {thisMonthData && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatINR(thisMonthData.total_debits)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>This month</div>
+                        </div>
+                      )}
+                      {outstanding && outstanding.charges > 0 && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatINR(outstanding.charges)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total charged</div>
+                        </div>
+                      )}
+                      {outstanding && outstanding.payments > 0 && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatINR(outstanding.payments)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total paid</div>
+                        </div>
+                      )}
+                      {lastPayment && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatINR(lastPayment.total_payments)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Last payment ({lastPayment.month_label})</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Monthly breakdown — collapsible */}
+                  <div style={{ padding: "0 18px" }}>
+                    <button
+                      onClick={() => setSelectedCard(expanded ? null : key)}
+                      style={{ width: "100%", background: "none", border: "none", color: "var(--text-dim)", padding: "10px 0",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", fontSize: 12 }}
+                    >
+                      <span>Monthly breakdown</span>
+                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {expanded && (
+                      <div style={{ paddingBottom: 14 }}>
+                        {card.months.sort((a, b) => b.month.localeCompare(a.month)).map((m, i) => (
+                          <div key={i} onClick={() => handleViewMonth(m)}
+                            style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              padding: "8px 10px", borderRadius: 8, cursor: "pointer", marginBottom: 4,
+                              background: "var(--bg-input)", transition: "background 0.15s",
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "var(--border)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "var(--bg-input)"}
+                          >
+                            <div>
+                              <span style={{ fontSize: 13, fontWeight: 500 }}>{m.month_label}</span>
+                              <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{m.transaction_count} txns</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>{formatINR(m.total_debits)}</span>
+                              {m.total_payments > 0 && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{formatINR(m.total_payments)} paid</span>}
+                              <ChevronRight size={14} style={{ color: "var(--text-dim)" }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Bank Accounts */}
+      {bankCards.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Bank Accounts</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {bankCards.map((card) => {
+              const color = BANK_COLORS[card.bank] || "#6b7280";
+              const thisMonthData = card.months.find(m => m.month === currentMonth);
+              const key = `${card.bank}_${card.accountType}`;
+              const expanded = selectedCard === key;
+
+              return (
+                <div key={key} style={{
+                  background: "var(--bg-card)", border: "1px solid var(--border)",
+                  borderRadius: 14, overflow: "hidden",
+                }}>
+                  <div style={{ background: color + "08", borderBottom: "1px solid var(--border)", padding: "14px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <Landmark size={18} style={{ color }} />
+                      <span style={{ fontSize: 16, fontWeight: 700 }}>{card.bank}</span>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "var(--green-bg)", color: "var(--green)" }}>Bank Account</span>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+                      {thisMonthData && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{formatINR(thisMonthData.total_debits)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>This month spent</div>
+                        </div>
+                      )}
+                      {card.totalCredits > 0 && (
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--green)" }}>+{formatINR(card.totalCredits)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total received</div>
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{card.totalTxns}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total transactions</div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })
+                  </div>
+
+                  {/* Monthly breakdown */}
+                  <div style={{ padding: "0 18px" }}>
+                    <button
+                      onClick={() => setSelectedCard(expanded ? null : key)}
+                      style={{ width: "100%", background: "none", border: "none", color: "var(--text-dim)", padding: "10px 0",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", fontSize: 12 }}
+                    >
+                      <span>{card.months.length} months of data</span>
+                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {expanded && (
+                      <div style={{ paddingBottom: 14 }}>
+                        {card.months.sort((a, b) => b.month.localeCompare(a.month)).map((m, i) => (
+                          <div key={i} onClick={() => handleViewMonth(m)}
+                            style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              padding: "8px 10px", borderRadius: 8, cursor: "pointer", marginBottom: 4,
+                              background: "var(--bg-input)", transition: "background 0.15s",
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "var(--border)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "var(--bg-input)"}
+                          >
+                            <div>
+                              <span style={{ fontSize: 13, fontWeight: 500 }}>{m.month_label}</span>
+                              <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{m.transaction_count} txns</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>{formatINR(m.total_debits)}</span>
+                              {m.total_credits > 0 && <span style={{ fontSize: 11, color: "var(--green)" }}>+{formatINR(m.total_credits)}</span>}
+                              <ChevronRight size={14} style={{ color: "var(--text-dim)" }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {Object.keys(cards).length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>
+          No cards or accounts detected yet. Import transactions to get started.
+        </div>
       )}
     </div>
   );
-}
-
-function _groupToSourceFilter(group) {
-  // Use the exact source value from the API if available
-  if (group.source_filter) return group.source_filter;
-  // Fallback reconstruction
-  const bank = group.bank.toLowerCase();
-  if (group.source_type === "gmail_alert") return "email_" + bank;
-  if (group.source_type === "gmail_statement") {
-    const suffix = group.is_credit_card ? "_cc" : "_bank";
-    return "stmt_" + bank + suffix;
-  }
-  if (group.source_type === "pdf_upload") return group.bank === "PhonePe/UPI" ? "upi_pdf" : "credit_card_pdf";
-  return "manual";
 }
