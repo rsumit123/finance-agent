@@ -97,6 +97,7 @@ export default function Expenses() {
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("date_desc");
   const [categoryFilter, setCategoryFilter] = useState(navState.category || "");
   const [bankFilter, setBankFilter] = useState(navState.bank || "");
   const [txnTypeFilter, setTxnTypeFilter] = useState(navState.txnType || "");
@@ -168,12 +169,22 @@ export default function Expenses() {
     return true;
   });
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case "date_asc": return new Date(a.date) - new Date(b.date);
+      case "amount_desc": return Math.abs(b.amount) - Math.abs(a.amount);
+      case "amount_asc": return Math.abs(a.amount) - Math.abs(b.amount);
+      default: return new Date(b.date) - new Date(a.date); // date_desc
+    }
+  });
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const spentTotal = filtered.reduce((s, e) => s + (e.amount > 0 ? e.amount : 0), 0);
   const receivedTotal = Math.abs(filtered.reduce((s, e) => s + (e.amount < 0 ? e.amount : 0), 0));
 
-  useEffect(() => setPage(0), [search, categoryFilter, bankFilter, txnTypeFilter]);
+  useEffect(() => setPage(0), [search, categoryFilter, bankFilter, txnTypeFilter, sortBy]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -261,8 +272,14 @@ export default function Expenses() {
           <option value="debit">Debits (spent)</option>
           <option value="credit">Credits (refunds/salary)</option>
         </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ padding: "6px 10px", fontSize: 12, minHeight: 34, width: "auto", minWidth: 0, flex: "0 1 auto" }}>
+          <option value="date_desc">Newest first</option>
+          <option value="date_asc">Oldest first</option>
+          <option value="amount_desc">Highest amount</option>
+          <option value="amount_asc">Lowest amount</option>
+        </select>
         {hasActiveFilters && (
-          <button className="secondary" onClick={() => { setCategoryFilter(""); setBankFilter(""); setTxnTypeFilter(""); setSearch(""); }} style={{ padding: "4px 10px", fontSize: 11, minHeight: 34 }}>
+          <button className="secondary" onClick={() => { setCategoryFilter(""); setBankFilter(""); setTxnTypeFilter(""); setSearch(""); setSortBy("date_desc"); }} style={{ padding: "4px 10px", fontSize: 11, minHeight: 34 }}>
             Clear
           </button>
         )}
