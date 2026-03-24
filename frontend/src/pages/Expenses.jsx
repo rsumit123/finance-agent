@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard } from "lucide-react";
 import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment } from "../api/client";
 
 const CATEGORIES = [
@@ -204,12 +204,6 @@ export default function Expenses() {
   };
 
   const handleCategoryChange = async (id, newCat) => {
-    if (newCat === "__card_payment__") {
-      // Show card picker
-      setLinkingId(id);
-      setEditingId(null);
-      return;
-    }
     await updateExpense(id, { category: newCat });
     setAllExpenses((prev) => prev.map((e) => e.id === id ? { ...e, category: newCat } : e));
     setEditingId(null);
@@ -218,6 +212,12 @@ export default function Expenses() {
   const handleLinkCard = async (expenseId, cardId) => {
     await linkCardPayment(expenseId, cardId);
     setAllExpenses((prev) => prev.map((e) => e.id === expenseId ? { ...e, category: "transfer", card_id: cardId } : e));
+    setLinkingId(null);
+  };
+
+  const handleUnlinkCard = async (expenseId) => {
+    await unlinkCardPayment(expenseId);
+    setAllExpenses((prev) => prev.map((e) => e.id === expenseId ? { ...e, card_id: null } : e));
     setLinkingId(null);
   };
 
@@ -353,22 +353,10 @@ export default function Expenses() {
                     {e.description || "—"}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
-                    {linkingId === e.id ? (
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        {cards.filter(c => c.card_type === "credit_card").map((c) => (
-                          <button key={c.id} onClick={() => handleLinkCard(e.id, c.id)}
-                            style={{ padding: "2px 8px", fontSize: 10, minHeight: 0, borderRadius: 4 }}>
-                            {c.bank_name} {c.last_four ? `••${c.last_four}` : "CC"}
-                          </button>
-                        ))}
-                        <button className="secondary" onClick={() => setLinkingId(null)}
-                          style={{ padding: "2px 6px", fontSize: 10, minHeight: 0 }}>Cancel</button>
-                      </div>
-                    ) : editingId === e.id ? (
+                    {editingId === e.id ? (
                       <select value={e.category} onChange={(ev) => handleCategoryChange(e.id, ev.target.value)} onBlur={() => setEditingId(null)} autoFocus
                         style={{ minHeight: 24, padding: "1px 4px", fontSize: 11, width: "auto", borderRadius: 4 }}>
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                        {cards.length > 0 && <option value="__card_payment__">💳 Card Payment</option>}
                       </select>
                     ) : (
                       <span onClick={() => setEditingId(e.id)} style={{
@@ -386,13 +374,20 @@ export default function Expenses() {
                   <div style={{ fontSize: 14, fontWeight: 700, color: e.amount < 0 ? "var(--green)" : "var(--text)" }}>
                     {e.amount < 0 ? "+" + formatINR(Math.abs(e.amount)) : formatINR(e.amount)}
                   </div>
-                  {deleteConfirmId === e.id ? (
-                    <button onClick={() => handleDelete(e.id)} className="danger" style={{ padding: "2px 6px", fontSize: 10, minHeight: 0, marginTop: 2 }}>Delete?</button>
-                  ) : (
-                    <button onClick={() => handleDelete(e.id)} style={{
-                      background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, marginTop: 2, cursor: "pointer", opacity: 0.4,
-                    }} title="Delete"><Trash2 size={12} /></button>
-                  )}
+                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 2 }}>
+                    {cards.length > 0 && e.amount > 0 && e.category !== "transfer" && (
+                      <button onClick={() => setLinkingId(e.id)} style={{
+                        background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, cursor: "pointer", opacity: 0.4,
+                      }} title="Mark as card payment"><CreditCard size={12} /></button>
+                    )}
+                    {deleteConfirmId === e.id ? (
+                      <button onClick={() => handleDelete(e.id)} className="danger" style={{ padding: "2px 6px", fontSize: 10, minHeight: 0 }}>Delete?</button>
+                    ) : (
+                      <button onClick={() => handleDelete(e.id)} style={{
+                        background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, cursor: "pointer", opacity: 0.4,
+                      }} title="Delete"><Trash2 size={12} /></button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -408,6 +403,69 @@ export default function Expenses() {
         </div>
       )}
       </>
+      )}
+
+      {/* Card Payment Modal */}
+      {linkingId && (
+        <>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 200 }} onClick={() => setLinkingId(null)} />
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 201,
+            background: "var(--bg-card)", borderRadius: "16px 16px 0 0",
+            padding: "24px 20px", paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+            maxHeight: "60vh", overflow: "auto",
+          }}>
+            <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2, margin: "0 auto 16px" }} />
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Mark as Card Payment</h3>
+            <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 16 }}>
+              This will exclude it from spending and link it to the selected credit card's outstanding balance.
+            </p>
+
+            {(() => {
+              const exp = allExpenses.find(e => e.id === linkingId);
+              if (!exp) return null;
+              return (
+                <div style={{
+                  background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{exp.description || "—"}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{formatDate(exp.date)}</div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(exp.amount)}</div>
+                </div>
+              );
+            })()}
+
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Which card was this payment for?
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {cards.filter(c => c.card_type === "credit_card").map((c) => (
+                <button key={c.id} onClick={() => handleLinkCard(linkingId, c.id)}
+                  style={{
+                    width: "100%", padding: "14px 16px", fontSize: 14,
+                    display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-start",
+                    background: "var(--bg-input)", border: "1px solid var(--border)",
+                    borderRadius: 10, cursor: "pointer", color: "var(--text)",
+                  }}>
+                  <CreditCard size={18} style={{ color: "var(--accent)" }} />
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 600 }}>{c.bank_name} {c.nickname || "Credit Card"}</div>
+                    {c.last_four && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>•••• {c.last_four}</div>}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button className="secondary" onClick={() => setLinkingId(null)}
+              style={{ width: "100%", marginTop: 12, padding: "12px" }}>
+              Cancel
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
