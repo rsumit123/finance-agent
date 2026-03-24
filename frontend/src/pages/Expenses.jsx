@@ -6,16 +6,30 @@ import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCa
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
   "subscriptions", "health", "education", "groceries", "rent",
-  "emi", "transfer", "atm", "salary", "other",
+  "home", "personal care", "emi", "transfer", "atm", "salary", "other",
 ];
 
-const CATEGORY_COLORS = {
-  food: "#f97316", transport: "#3b82f6", shopping: "#8b5cf6",
-  entertainment: "#ec4899", bills: "#ef4444", health: "#22c55e",
-  education: "#06b6d4", groceries: "#14b8a6", rent: "#eab308",
-  emi: "#f43f5e", transfer: "#64748b", atm: "#a855f7",
-  salary: "#10b981", subscriptions: "#0ea5e9", other: "#6b7280",
+const CATEGORY_META = {
+  food:          { color: "#f97316", icon: "🍔", label: "Food" },
+  transport:     { color: "#3b82f6", icon: "🚗", label: "Transport" },
+  shopping:      { color: "#8b5cf6", icon: "🛍️", label: "Shopping" },
+  entertainment: { color: "#ec4899", icon: "🎬", label: "Entertainment" },
+  bills:         { color: "#ef4444", icon: "📄", label: "Bills" },
+  subscriptions: { color: "#0ea5e9", icon: "🔄", label: "Subscriptions" },
+  health:        { color: "#22c55e", icon: "💊", label: "Health" },
+  education:     { color: "#06b6d4", icon: "📚", label: "Education" },
+  groceries:     { color: "#14b8a6", icon: "🥬", label: "Groceries" },
+  rent:          { color: "#eab308", icon: "🏠", label: "Rent" },
+  home:          { color: "#a3866a", icon: "🔧", label: "Home" },
+  "personal care": { color: "#d946ef", icon: "💇", label: "Personal Care" },
+  emi:           { color: "#f43f5e", icon: "💳", label: "EMI" },
+  transfer:      { color: "#64748b", icon: "↔️", label: "Transfer" },
+  atm:           { color: "#a855f7", icon: "🏧", label: "ATM" },
+  salary:        { color: "#10b981", icon: "💰", label: "Salary" },
+  other:         { color: "#6b7280", icon: "📌", label: "Other" },
 };
+
+const CATEGORY_COLORS = Object.fromEntries(Object.entries(CATEGORY_META).map(([k, v]) => [k, v.color]));
 
 const BANK_COLORS = {
   hdfc: "#004b87", axis: "#97144d", scapia: "#6366f1",
@@ -538,24 +552,13 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Source</div>
             <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, fontWeight: 600, background: bankColor + "22", color: bankColor, marginTop: 2, display: "inline-block" }}>{si.label}</span>
           </div>
-          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px", cursor: "pointer" }} onClick={() => setEditCat(true)}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Category</div>
-            {editCat ? (
-              <select value={e.category} onChange={(ev) => {
-                const newCat = ev.target.value;
-                onCategoryChange(newCat);
-                setEditCat(false);
-                setPendingCategory(newCat);
-                setShowApplyAll(true);
-              }} autoFocus style={{ marginTop: 2, minHeight: 28, fontSize: 12, width: "100%", borderRadius: 6 }}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, cursor: "pointer" }} onClick={() => setEditCat(true)}>
-                <span style={{ fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: catColor + "22", color: catColor, textTransform: "capitalize" }}>{e.category}</span>
-                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>edit</span>
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+              <span style={{ fontSize: 14 }}>{CATEGORY_META[e.category]?.icon || "📌"}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: catColor, textTransform: "capitalize" }}>{CATEGORY_META[e.category]?.label || e.category}</span>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>edit</span>
+            </div>
           </div>
         </div>
 
@@ -563,6 +566,43 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
           <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Reference ID</div>
             <div style={{ fontSize: 12, fontFamily: "monospace", marginTop: 2, wordBreak: "break-all" }}>{e.reference_id}</div>
+          </div>
+        )}
+
+        {/* Category picker grid */}
+        {editCat && (
+          <div style={{
+            background: "var(--bg-input)", borderRadius: 10, padding: "14px",
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Select Category
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {CATEGORIES.map((c) => {
+                const meta = CATEGORY_META[c] || { color: "#6b7280", icon: "📌", label: c };
+                const isActive = e.category === c;
+                return (
+                  <button key={c} onClick={() => {
+                    if (c !== e.category) {
+                      onCategoryChange(c);
+                      setPendingCategory(c);
+                      setShowApplyAll(true);
+                    }
+                    setEditCat(false);
+                  }} style={{
+                    padding: "10px 6px", borderRadius: 8, border: isActive ? `2px solid ${meta.color}` : "1px solid var(--border)",
+                    background: isActive ? meta.color + "22" : "var(--bg-card)",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                    cursor: "pointer", minHeight: 0,
+                    color: isActive ? meta.color : "var(--text)",
+                  }}>
+                    <span style={{ fontSize: 18 }}>{meta.icon}</span>
+                    <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, textTransform: "capitalize" }}>{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

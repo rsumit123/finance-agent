@@ -44,7 +44,7 @@ CATEGORY_KEYWORDS = {
         "foreign currency transaction fee", "dcc markup", "annual fee",
         "github",
         "insurance", "lic", "premium", "openrouter", "google ",
-        "federal bank", "salon", "jawed habib", "parlour", "parlor",
+        "federal bank",
     ],
     "shopping": [
         "amazon", "flipkart", "myntra", "ajio", "meesho", "shopping",
@@ -62,6 +62,16 @@ CATEGORY_KEYWORDS = {
     ],
     "rent": [
         "rent", "landlord", "house rent", "pg ", "hostel",
+    ],
+    "home": [
+        "furniture", "ikea", "pepperfry", "urban ladder", "construction",
+        "infrastructure", "plumber", "electrician", "carpenter", "painter",
+        "home decor", "hardware", "cement", "tiles", "sanitary",
+    ],
+    "personal care": [
+        "salon", "jawed habib", "parlour", "parlor", "spa", "gym",
+        "fitness", "grooming", "haircut", "beauty", "skincare",
+        "cult.fit", "cultfit",
     ],
     "emi": [
         "emi", "loan", "instalment", "equated monthly",
