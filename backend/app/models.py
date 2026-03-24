@@ -112,6 +112,19 @@ class GmailAccount(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class SyncJob(Base):
+    __tablename__ = "sync_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    job_type = Column(String(50), nullable=False)  # "alerts", "statements", "all"
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    result = Column(Text, default="")  # JSON string
+    error = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+
+
 class CategoryRule(Base):
     __tablename__ = "category_rules"
 

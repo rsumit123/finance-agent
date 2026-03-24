@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, FileSearch, AlertOctagon, X, AlertCircle, Calendar } from "lucide-react";
-import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, disconnectGmail, syncStatements, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader } from "lucide-react";
+import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, getSyncStatus, getLatestSync, disconnectGmail, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
 
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -22,9 +22,8 @@ export default function UploadPage() {
   // Gmail state
   const [gmailStatus, setGmailStatus] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncJobId, setSyncJobId] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
-  const [syncingStatements, setSyncingStatements] = useState(false);
-  const [stmtResult, setStmtResult] = useState(null);
   const [syncAfter, setSyncAfter] = useState("");
   const [syncBefore, setSyncBefore] = useState("");
 
@@ -38,9 +37,40 @@ export default function UploadPage() {
     getUploadHistory().then(setHistory).catch(() => {});
     getGmailStatus().then(setGmailStatus).catch(() => {});
     getPasswords().then(setPasswords).catch(() => {});
+    // Load last sync result
+    getLatestSync().then((job) => {
+      if (job?.status === "completed" && job.result) setSyncResult(job.result);
+      if (job?.status === "running" || job?.status === "pending") {
+        setSyncing(true);
+        setSyncJobId(job.job_id);
+      }
+    }).catch(() => {});
   };
 
   useEffect(refreshAll, []);
+
+  // Poll for sync job status
+  useEffect(() => {
+    if (!syncJobId || !syncing) return;
+    const interval = setInterval(async () => {
+      try {
+        const job = await getSyncStatus(syncJobId);
+        if (job.status === "completed") {
+          setSyncing(false);
+          setSyncResult(job.result);
+          setSyncJobId(null);
+          refreshAll();
+        } else if (job.status === "failed") {
+          setSyncing(false);
+          setSyncResult({ error: job.error || "Sync failed" });
+          setSyncJobId(null);
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [syncJobId, syncing]);
 
   // Handlers
   const handleUpload = async () => {
@@ -76,31 +106,16 @@ export default function UploadPage() {
     }
   };
 
-  const handleSync = async ({ full = false } = {}) => {
+  const handleSync = async ({ full = false, jobType = "all" } = {}) => {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await startGmailSync({ full, after: syncAfter, before: syncBefore });
-      setSyncResult(res);
-      refreshAll();
+      const res = await startGmailSync({ full, after: syncAfter, before: syncBefore, jobType });
+      setSyncJobId(res.job_id);
+      // Polling will handle the rest
     } catch (err) {
-      setSyncResult({ error: err.response?.data?.detail || "Sync failed" });
-    } finally {
       setSyncing(false);
-    }
-  };
-
-  const handleSyncStatements = async () => {
-    setSyncingStatements(true);
-    setStmtResult(null);
-    try {
-      const res = await syncStatements();
-      setStmtResult(res);
-      refreshAll();
-    } catch (err) {
-      setStmtResult({ error: err.response?.data?.detail || "Statement sync failed" });
-    } finally {
-      setSyncingStatements(false);
+      setSyncResult({ error: err.response?.data?.detail || "Sync failed" });
     }
   };
 
@@ -186,66 +201,55 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* Date range - shared for both sync types */}
-            <div style={{ background: "var(--bg-input)", borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <Calendar size={14} style={{ color: "var(--text-dim)" }} />
-                <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Date range (applies to both sync options below)</span>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <input type="date" value={syncAfter} onChange={(e) => setSyncAfter(e.target.value)} style={{ flex: "1 1 130px", minWidth: 0 }} />
-                <span style={{ color: "var(--text-dim)", fontSize: 12 }}>to</span>
-                <input type="date" value={syncBefore} onChange={(e) => setSyncBefore(e.target.value)} style={{ flex: "1 1 130px", minWidth: 0 }} />
-                {(syncAfter || syncBefore) && (
-                  <button className="secondary" onClick={() => { setSyncAfter(""); setSyncBefore(""); }} style={{ padding: "6px 10px", minHeight: 36, fontSize: 12 }}>
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Two sync options side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {/* Alerts */}
-              <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Transaction Alerts</div>
-                <p style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 10, lineHeight: 1.4 }}>
-                  Reads individual transaction notification emails from HDFC, Axis, Scapia banks.
+            {/* Sync controls */}
+            {syncing ? (
+              <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: 20, textAlign: "center" }}>
+                <RefreshCw size={24} style={{ color: "var(--accent)", animation: "spin 1s linear infinite" }} />
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 10 }}>Syncing your transactions...</div>
+                <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
+                  This may take 1-2 minutes. You can navigate away — we'll keep syncing in the background.
                 </p>
-                <button onClick={() => handleSync()} disabled={syncing} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13 }}>
-                  <RefreshCw size={14} />
-                  {syncing ? "Syncing..." : syncAfter ? "Sync Range" : "Sync Alerts"}
-                </button>
-                {!syncAfter && !syncBefore && (
-                  <button className="secondary" onClick={() => handleSync({ full: true })} disabled={syncing} style={{ width: "100%", marginTop: 6, fontSize: 11, padding: "6px 10px" }}>
-                    Full Resync (90 days)
-                  </button>
-                )}
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
               </div>
+            ) : (
+              <div>
+                {/* Date range (optional) */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <Calendar size={14} style={{ color: "var(--text-dim)" }} />
+                  <input type="date" value={syncAfter} onChange={(e) => setSyncAfter(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 36, fontSize: 13 }} />
+                  <span style={{ color: "var(--text-dim)", fontSize: 12 }}>to</span>
+                  <input type="date" value={syncBefore} onChange={(e) => setSyncBefore(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 36, fontSize: 13 }} />
+                  {(syncAfter || syncBefore) && (
+                    <button className="secondary" onClick={() => { setSyncAfter(""); setSyncBefore(""); }} style={{ padding: "6px 10px", minHeight: 36 }}><X size={12} /></button>
+                  )}
+                </div>
 
-              {/* Statements */}
-              <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>PDF Statements</div>
-                <p style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 10, lineHeight: 1.4 }}>
-                  Finds credit card statement PDFs attached to emails. Needs saved passwords below.
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={() => handleSync()} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 14, padding: "12px 16px" }}>
+                    <RefreshCw size={16} />
+                    {syncAfter ? "Sync Date Range" : "Sync All"}
+                  </button>
+                  {!syncAfter && !syncBefore && (
+                    <button className="secondary" onClick={() => handleSync({ full: true })} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "10px 14px" }}>
+                      Full Resync
+                    </button>
+                  )}
+                </div>
+
+                <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
+                  Syncs transaction alerts + downloads CC/bank statement PDFs from Gmail in one go.
                 </p>
-                <button onClick={handleSyncStatements} disabled={syncingStatements} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13 }}>
-                  <FileSearch size={14} />
-                  {syncingStatements ? "Scanning..." : "Find Statements"}
-                </button>
               </div>
-            </div>
+            )}
 
             {/* Results */}
             {syncResult && !syncResult.error && (
-              <SyncResultCard title="Alert Sync Results" result={syncResult} type="alerts" />
+              <>
+                {syncResult.alerts && <SyncResultCard title="Transaction Alerts" result={syncResult.alerts} type="alerts" />}
+                {syncResult.statements && <SyncResultCard title="PDF Statements" result={syncResult.statements} type="statements" />}
+              </>
             )}
             {syncResult?.error && <ErrorMsg msg={syncResult.error} />}
-
-            {stmtResult && !stmtResult.error && (
-              <SyncResultCard title="Statement Sync Results" result={stmtResult} type="statements" />
-            )}
-            {stmtResult?.error && <ErrorMsg msg={stmtResult.error} />}
 
             {/* Supported banks info */}
             <div style={{ background: "var(--bg-input)", borderRadius: 8, padding: "10px 14px", marginTop: 14, fontSize: 12 }}>

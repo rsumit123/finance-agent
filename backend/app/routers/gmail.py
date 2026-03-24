@@ -14,10 +14,13 @@ from googleapiclient.discovery import build
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import json as json_lib
+import threading
+
 from ..auth import get_current_user
 from ..config import FRONTEND_URL, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REDIRECT_URI
-from ..database import get_db
-from ..models import Expense, GmailAccount, User
+from ..database import get_db, SessionLocal
+from ..models import Expense, GmailAccount, SyncJob, User
 from ..services.gmail_sync import sync_emails, sync_statements
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
@@ -151,38 +154,123 @@ def gmail_sync(
     full: bool = Query(False),
     after: str = Query(""),
     before: str = Query(""),
+    job_type: str = Query("all", pattern="^(alerts|statements|all)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Sync bank alert emails from Gmail."""
+    """Start a background sync job. Returns job_id immediately."""
     account = db.query(GmailAccount).filter(GmailAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=400, detail="Gmail not connected")
+
+    # Check for already running job
+    running = db.query(SyncJob).filter(
+        SyncJob.user_id == current_user.id,
+        SyncJob.status.in_(["pending", "running"]),
+    ).first()
+    if running:
+        return {"job_id": running.id, "status": running.status, "message": "Sync already in progress"}
 
     if full:
         account.last_sync_at = None
         db.commit()
 
-    result = sync_emails(db, user_id=current_user.id, after_date=after or None, before_date=before or None)
-    if result.get("error"):
-        raise HTTPException(status_code=500, detail=result["error"])
-    return result
+    # Create job record
+    job = SyncJob(user_id=current_user.id, job_type=job_type, status="pending")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    job_id = job.id
+    user_id = current_user.id
+
+    # Run in background thread
+    def run_sync():
+        from datetime import datetime
+        db_bg = SessionLocal()
+        try:
+            bg_job = db_bg.query(SyncJob).filter(SyncJob.id == job_id).first()
+            bg_job.status = "running"
+            db_bg.commit()
+
+            results = {}
+
+            if job_type in ("alerts", "all"):
+                alerts_result = sync_emails(db_bg, user_id=user_id, after_date=after or None, before_date=before or None)
+                results["alerts"] = alerts_result
+
+            if job_type in ("statements", "all"):
+                stmts_result = sync_statements(db_bg, user_id=user_id)
+                results["statements"] = stmts_result
+
+            bg_job.result = json_lib.dumps(results, default=str)
+            bg_job.status = "completed"
+            bg_job.completed_at = datetime.now()
+        except Exception as e:
+            bg_job.status = "failed"
+            bg_job.error = str(e)[:500]
+            bg_job.completed_at = datetime.now()
+        finally:
+            db_bg.commit()
+            db_bg.close()
+
+    thread = threading.Thread(target=run_sync, daemon=True)
+    thread.start()
+
+    return {"job_id": job_id, "status": "pending", "message": "Sync started"}
 
 
-@router.post("/sync-statements")
-def gmail_sync_statements(
+@router.get("/sync/{job_id}")
+def get_sync_status(
+    job_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Find and parse CC/bank statement PDFs from Gmail attachments."""
-    account = db.query(GmailAccount).filter(GmailAccount.user_id == current_user.id).first()
-    if not account:
-        raise HTTPException(status_code=400, detail="Gmail not connected")
+    """Poll sync job status."""
+    job = db.query(SyncJob).filter(SyncJob.id == job_id, SyncJob.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-    result = sync_statements(db, user_id=current_user.id)
-    if result.get("error"):
-        raise HTTPException(status_code=500, detail=result["error"])
-    return result
+    response = {
+        "job_id": job.id,
+        "status": job.status,
+        "job_type": job.job_type,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+
+    if job.status == "completed" and job.result:
+        response["result"] = json_lib.loads(job.result)
+    if job.status == "failed":
+        response["error"] = job.error
+
+    return response
+
+
+@router.get("/sync/latest")
+def get_latest_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the most recent sync job result."""
+    job = db.query(SyncJob).filter(
+        SyncJob.user_id == current_user.id,
+    ).order_by(SyncJob.created_at.desc()).first()
+
+    if not job:
+        return {"job_id": None, "status": None}
+
+    response = {
+        "job_id": job.id,
+        "status": job.status,
+        "job_type": job.job_type,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+    if job.status == "completed" and job.result:
+        response["result"] = json_lib.loads(job.result)
+    if job.status == "failed":
+        response["error"] = job.error
+    return response
 
 
 @router.get("/debug")

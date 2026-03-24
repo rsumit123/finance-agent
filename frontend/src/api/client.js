@@ -113,19 +113,22 @@ export const getGmailStatus = () =>
 export const getGmailAuthUrl = () =>
   api.get("/api/gmail/auth").then((r) => r.data);
 
-export const startGmailSync = ({ full = false, after = "", before = "" } = {}) => {
-  const params = {};
+export const startGmailSync = ({ full = false, after = "", before = "", jobType = "all" } = {}) => {
+  const params = { job_type: jobType };
   if (full) params.full = true;
   if (after) params.after = after;
   if (before) params.before = before;
   return api.post("/api/gmail/sync", null, { params }).then((r) => r.data);
 };
 
+export const getSyncStatus = (jobId) =>
+  api.get(`/api/gmail/sync/${jobId}`).then((r) => r.data);
+
+export const getLatestSync = () =>
+  api.get("/api/gmail/sync/latest").then((r) => r.data);
+
 export const disconnectGmail = () =>
   api.post("/api/gmail/disconnect").then((r) => r.data);
-
-export const syncStatements = () =>
-  api.post("/api/gmail/sync-statements").then((r) => r.data);
 
 // Settings
 export const getPasswords = () =>
