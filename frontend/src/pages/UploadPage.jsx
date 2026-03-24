@@ -177,43 +177,24 @@ export default function UploadPage() {
           <div style={{ textAlign: "center", padding: 24, color: "var(--text-dim)" }}>Loading...</div>
         ) : gmailStatus?.connected ? (
           <div>
-            {/* Connected badge + summary */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            {/* Status line: email + stats + disconnect */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <span style={{ background: "var(--green-bg)", border: "1px solid var(--green)", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "var(--green)", display: "flex", alignItems: "center", gap: 4 }}>
                 <CheckCircle size={12} /> {gmailStatus.email}
               </span>
-              {gmailStatus.last_sync && (
+              {summary?.total_transactions > 0 && (
                 <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                  Synced {new Date(gmailStatus.last_sync).toLocaleDateString()}
+                  {summary.total_transactions} transactions · {summary.earliest_date?.substring(0, 10)} → {summary.latest_date?.substring(0, 10)}
                 </span>
               )}
-              <button className="secondary" onClick={handleDisconnect} style={{ padding: "3px 8px", minHeight: 0, fontSize: 11 }}>
+              <button className="secondary" onClick={handleDisconnect} style={{ padding: "3px 8px", minHeight: 0, fontSize: 11, marginLeft: "auto" }}>
                 Disconnect
               </button>
             </div>
 
-            {/* Import summary bar */}
-            {summary?.total_transactions > 0 && (
-              <div style={{ background: "var(--bg-input)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-                <div>
-                  <span style={{ fontSize: 18, fontWeight: 700 }}>{summary.total_transactions}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 4 }}>imported</span>
-                </div>
-                <span style={{ color: "var(--border)" }}>|</span>
-                <span style={{ fontSize: 12 }}>
-                  {summary.earliest_date?.substring(0, 10)} → {summary.latest_date?.substring(0, 10)}
-                </span>
-                <span style={{ color: "var(--border)" }}>|</span>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  {Object.entries(summary.by_source || {}).map(([src, cnt]) => {
-                    const bank = src.includes("hdfc") ? "HDFC" : src.includes("axis") ? "Axis" : src.includes("scapia") ? "Scapia" : src.includes("upi") ? "UPI" : src === "manual" ? "Manual" : src;
-                    return <span key={src} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3, background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>{bank}: {cnt}</span>;
-                  })}
-                </div>
-              </div>
-            )}
+            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
-            {/* Sync controls */}
+            {/* Sync controls OR spinner */}
             {syncing ? (
               <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: 20, textAlign: "center" }}>
                 <RefreshCw size={24} style={{ color: "var(--accent)", animation: "spin 1s linear infinite" }} />
@@ -221,57 +202,61 @@ export default function UploadPage() {
                 <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
                   This may take 1-2 minutes. You can navigate away — we'll keep syncing in the background.
                 </p>
-                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
               </div>
             ) : (
-              <div>
-                {/* Date range (optional) */}
-                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                  <Calendar size={14} style={{ color: "var(--text-dim)" }} />
-                  <input type="date" value={syncAfter} onChange={(e) => setSyncAfter(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 36, fontSize: 13 }} />
-                  <span style={{ color: "var(--text-dim)", fontSize: 12 }}>to</span>
-                  <input type="date" value={syncBefore} onChange={(e) => setSyncBefore(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 36, fontSize: 13 }} />
-                  {(syncAfter || syncBefore) && (
-                    <button className="secondary" onClick={() => { setSyncAfter(""); setSyncBefore(""); }} style={{ padding: "6px 10px", minHeight: 36 }}><X size={12} /></button>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => handleSync()} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 14, padding: "12px 16px" }}>
-                    <RefreshCw size={16} />
-                    {syncAfter ? "Sync Date Range" : "Sync All"}
-                  </button>
-                  {!syncAfter && !syncBefore && (
-                    <button className="secondary" onClick={() => handleSync({ full: true })} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "10px 14px" }}>
-                      Full Resync
-                    </button>
-                  )}
-                </div>
-
-                <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
-                  Syncs transaction alerts + downloads CC/bank statement PDFs from Gmail in one go.
-                </p>
-              </div>
+              <button onClick={() => handleSync()} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, padding: "14px 16px" }}>
+                <RefreshCw size={16} /> Sync All
+              </button>
             )}
 
-            {/* Results — collapsible */}
+            {/* Advanced options — collapsible */}
+            {!syncing && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", padding: "4px 0" }}>
+                  Advanced: custom date range or full resync
+                </summary>
+                <div style={{ padding: "8px 0" }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input type="date" value={syncAfter} onChange={(e) => setSyncAfter(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 34, fontSize: 12 }} />
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}>to</span>
+                    <input type="date" value={syncBefore} onChange={(e) => setSyncBefore(e.target.value)} style={{ flex: "1 1 120px", minWidth: 0, minHeight: 34, fontSize: 12 }} />
+                    {(syncAfter || syncBefore) && (
+                      <button className="secondary" onClick={() => { setSyncAfter(""); setSyncBefore(""); }} style={{ padding: "4px 8px", minHeight: 34 }}><X size={12} /></button>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {(syncAfter || syncBefore) && (
+                      <button onClick={() => handleSync()} style={{ flex: 1, fontSize: 12, padding: "8px 12px" }}>
+                        Sync Date Range
+                      </button>
+                    )}
+                    <button className="secondary" onClick={() => handleSync({ full: true })} style={{ flex: 1, fontSize: 12, padding: "8px 12px" }}>
+                      Full Resync (90 days)
+                    </button>
+                  </div>
+                </div>
+              </details>
+            )}
+
+            {/* Last sync results — collapsible */}
             {syncResult && !syncResult.error && (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 10 }}>
                 <button
                   className="secondary"
                   onClick={() => setSyncResultExpanded(!syncResultExpanded)}
-                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", fontSize: 13 }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", fontSize: 12 }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <CheckCircle size={14} style={{ color: "var(--green)" }} />
-                    Last sync {syncCompletedAt ? new Date(syncCompletedAt).toLocaleString() : ""}
-                    {syncResult.alerts && ` · ${syncResult.alerts.imported || 0} alerts`}
-                    {syncResult.statements && ` · ${syncResult.statements.imported || 0} statements`}
+                    <CheckCircle size={12} style={{ color: "var(--green)" }} />
+                    Last sync{syncCompletedAt ? ": " + new Date(syncCompletedAt).toLocaleString() : ""}
+                    {syncResult.alerts && ` · ${syncResult.alerts.imported || 0} new`}
+                    {syncResult.alerts?.duplicates > 0 && ` · ${syncResult.alerts.duplicates} dupes`}
+                    {syncResult.statements && ` · ${syncResult.statements.imported || 0} from PDFs`}
                   </span>
                   {syncResultExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
                 {syncResultExpanded && (
-                  <div style={{ borderTop: "1px solid var(--border)" }}>
+                  <div style={{ background: "var(--bg-input)", borderRadius: "0 0 8px 8px", padding: "8px 0" }}>
                     {syncResult.alerts && <SyncResultCard title="Transaction Alerts" result={syncResult.alerts} type="alerts" />}
                     {syncResult.statements && <SyncResultCard title="PDF Statements" result={syncResult.statements} type="statements" />}
                   </div>
@@ -280,10 +265,12 @@ export default function UploadPage() {
             )}
             {syncResult?.error && <ErrorMsg msg={syncResult.error} />}
 
-            {/* Supported banks info */}
-            <div style={{ background: "var(--bg-input)", borderRadius: 8, padding: "10px 14px", marginTop: 14, fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--text-dim)" }}>Supported Banks</div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+            {/* Supported banks — collapsible */}
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", padding: "4px 0" }}>
+                Supported banks: HDFC, Axis, Scapia, ICICI, Kotak, SBI
+              </summary>
+              <div style={{ padding: "8px 0", display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {[
                   { name: "HDFC", alerts: true, statements: true },
                   { name: "Axis", alerts: false, statements: true },
@@ -293,17 +280,11 @@ export default function UploadPage() {
                   { name: "SBI", alerts: false, statements: true },
                 ].map((b) => (
                   <span key={b.name} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(99,102,241,0.1)", color: "var(--accent)", fontSize: 11 }}>
-                    {b.name}
-                    {b.alerts && " ✉"}
-                    {b.statements && " 📄"}
+                    {b.name} {b.alerts && "✉"} {b.statements && "📄"}
                   </span>
                 ))}
               </div>
-              <div style={{ color: "var(--text-dim)", lineHeight: 1.5, fontSize: 11 }}>
-                ✉ = Email alerts parsed &nbsp; 📄 = PDF statements parsed<br />
-                CC payments/refunds tracked separately from income.
-              </div>
-            </div>
+            </details>
           </div>
         ) : (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
