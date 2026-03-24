@@ -405,68 +405,79 @@ export default function Expenses() {
       </>
       )}
 
-      {/* Card Payment Modal */}
-      {linkingId && (
-        <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 200 }} onClick={() => setLinkingId(null)} />
-          <div style={{
-            position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 201,
-            background: "var(--bg-card)", borderRadius: "16px 16px 0 0",
-            padding: "24px 20px", paddingBottom: "max(24px, env(safe-area-inset-bottom))",
-            maxHeight: "60vh", overflow: "auto",
-          }}>
-            <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2, margin: "0 auto 16px" }} />
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Mark as Card Payment</h3>
-            <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 16 }}>
-              This will exclude it from spending and link it to the selected credit card's outstanding balance.
-            </p>
-
-            {(() => {
-              const exp = allExpenses.find(e => e.id === linkingId);
-              if (!exp) return null;
-              return (
-                <div style={{
-                  background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px", marginBottom: 16,
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{exp.description || "—"}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{formatDate(exp.date)}</div>
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(exp.amount)}</div>
-                </div>
-              );
-            })()}
-
-            <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Which card was this payment for?
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {cards.filter(c => c.card_type === "credit_card").map((c) => (
-                <button key={c.id} onClick={() => handleLinkCard(linkingId, c.id)}
-                  style={{
-                    width: "100%", padding: "14px 16px", fontSize: 14,
-                    display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-start",
-                    background: "var(--bg-input)", border: "1px solid var(--border)",
-                    borderRadius: 10, cursor: "pointer", color: "var(--text)",
-                  }}>
-                  <CreditCard size={18} style={{ color: "var(--accent)" }} />
-                  <div style={{ textAlign: "left" }}>
-                    <div style={{ fontWeight: 600 }}>{c.bank_name} {c.nickname || "Credit Card"}</div>
-                    {c.last_four && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>•••• {c.last_four}</div>}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <button className="secondary" onClick={() => setLinkingId(null)}
-              style={{ width: "100%", marginTop: 12, padding: "12px" }}>
-              Cancel
-            </button>
-          </div>
-        </>
-      )}
+      {/* Card Payment Modal — rendered at top level, outside all containers */}
+      {linkingId && <CardPaymentModal
+        expense={allExpenses.find(e => e.id === linkingId)}
+        cards={cards.filter(c => c.card_type === "credit_card")}
+        onLink={(cardId) => handleLinkCard(linkingId, cardId)}
+        onClose={() => setLinkingId(null)}
+      />}
     </div>
+  );
+}
+
+function CardPaymentModal({ expense, cards, onLink, onClose }) {
+  if (!expense) { onClose(); return null; }
+
+  return (
+    <>
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 200 }} onClick={onClose} />
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 201,
+        background: "var(--bg-card)", borderRadius: "16px 16px 0 0",
+        padding: "24px 20px", paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+        maxHeight: "60vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2, margin: "0 auto 16px" }} />
+        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Mark as Card Payment</h3>
+        <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 16 }}>
+          This will exclude it from spending and link it to the selected credit card's outstanding balance.
+        </p>
+
+        <div style={{
+          background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{expense.description || "—"}</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{new Date(expense.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>
+            {"₹" + Number(expense.amount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Which card was this payment for?
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {cards.length === 0 ? (
+            <p style={{ color: "var(--text-dim)", fontSize: 13, textAlign: "center", padding: 16 }}>
+              No credit cards detected yet. Import a credit card statement first.
+            </p>
+          ) : cards.map((c) => (
+            <button key={c.id} onClick={() => onLink(c.id)}
+              style={{
+                width: "100%", padding: "14px 16px", fontSize: 14,
+                display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-start",
+                background: "var(--bg-input)", border: "1px solid var(--border)",
+                borderRadius: 10, cursor: "pointer", color: "var(--text)",
+              }}>
+              <CreditCard size={18} style={{ color: "var(--accent)" }} />
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontWeight: 600 }}>{c.bank_name} {c.nickname || "Credit Card"}</div>
+                {c.last_four && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>•••• {c.last_four}</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button className="secondary" onClick={onClose}
+          style={{ width: "100%", marginTop: 12, padding: "12px" }}>
+          Cancel
+        </button>
+      </div>
+    </>
   );
 }
