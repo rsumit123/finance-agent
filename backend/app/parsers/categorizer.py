@@ -73,8 +73,15 @@ CATEGORY_KEYWORDS = {
         "fitness", "grooming", "haircut", "beauty", "skincare",
         "cult.fit", "cultfit",
     ],
+    "investment": [
+        "sip", "mutual fund", "mf purchase", "zerodha", "groww",
+        "kuvera", "coin by zerodha", "et money", "paytm money",
+        "fixed deposit", "recurring deposit", "nps", "ppf",
+        "stocks", "shares", "trading", "demat",
+    ],
     "emi": [
         "emi", "loan", "instalment", "equated monthly",
+        "home loan", "car loan", "personal loan", "loan repayment",
     ],
     "atm": [
         "atm", "cash withdrawal", "cash count", "cwdr", "iccw atm",

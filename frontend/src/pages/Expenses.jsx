@@ -6,7 +6,7 @@ import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCa
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
   "subscriptions", "health", "education", "groceries", "rent",
-  "home", "personal care", "emi", "transfer", "atm", "salary", "other",
+  "home", "personal care", "investment", "emi", "transfer", "atm", "salary", "other",
 ];
 
 const CATEGORY_META = {
@@ -22,7 +22,8 @@ const CATEGORY_META = {
   rent:          { color: "#eab308", icon: "🏠", label: "Rent" },
   home:          { color: "#a3866a", icon: "🔧", label: "Home" },
   "personal care": { color: "#d946ef", icon: "💇", label: "Personal Care" },
-  emi:           { color: "#f43f5e", icon: "💳", label: "EMI" },
+  investment:    { color: "#059669", icon: "📈", label: "Investment" },
+  emi:           { color: "#f43f5e", icon: "🏦", label: "Loan & EMI" },
   transfer:      { color: "#64748b", icon: "↔️", label: "Transfer" },
   atm:           { color: "#a855f7", icon: "🏧", label: "ATM" },
   salary:        { color: "#10b981", icon: "💰", label: "Salary" },
