@@ -96,6 +96,7 @@ export default function Expenses() {
   const [page, setPage] = useState(0);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState(null);
   const [cards, setCards] = useState([]);
   const [linkingId, setLinkingId] = useState(null); // expense id being linked to a card
   const [search, setSearch] = useState("");
@@ -342,7 +343,8 @@ export default function Expenses() {
               <div key={e.id} style={{
                 background: "var(--bg-card)", border: "1px solid var(--border)",
                 borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
-              }}>
+                cursor: "pointer",
+              }} onClick={() => setSelectedExpenseId(e.id)}>
                 <div style={{ flexShrink: 0, width: 44, textAlign: "center", background: "var(--bg-input)", borderRadius: 8, padding: "6px 4px" }}>
                   <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>{day}</div>
                   <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>{month}</div>
@@ -352,7 +354,7 @@ export default function Expenses() {
                   <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {e.description || "—"}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }} onClick={(ev) => ev.stopPropagation()}>
                     {editingId === e.id ? (
                       <select value={e.category} onChange={(ev) => handleCategoryChange(e.id, ev.target.value)} onBlur={() => setEditingId(null)} autoFocus
                         style={{ minHeight: 24, padding: "1px 4px", fontSize: 11, width: "auto", borderRadius: 4 }}>
@@ -374,7 +376,7 @@ export default function Expenses() {
                   <div style={{ fontSize: 14, fontWeight: 700, color: e.amount < 0 ? "var(--green)" : "var(--text)" }}>
                     {e.amount < 0 ? "+" + formatINR(Math.abs(e.amount)) : formatINR(e.amount)}
                   </div>
-                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 2 }}>
+                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 2 }} onClick={(ev) => ev.stopPropagation()}>
                     {cards.length > 0 && e.amount > 0 && e.category !== "transfer" && (
                       <button onClick={() => setLinkingId(e.id)} style={{
                         background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, cursor: "pointer", opacity: 0.4,
@@ -405,7 +407,21 @@ export default function Expenses() {
       </>
       )}
 
-      {/* Card Payment Modal — rendered at top level, outside all containers */}
+      {/* Transaction Detail Modal */}
+      {selectedExpenseId && (() => {
+        const exp = allExpenses.find(e => e.id === selectedExpenseId);
+        if (!exp) return null;
+        return <TransactionDetail
+          expense={exp}
+          cards={cards}
+          onClose={() => setSelectedExpenseId(null)}
+          onCategoryChange={(cat) => { handleCategoryChange(exp.id, cat); setAllExpenses(prev => prev.map(e => e.id === exp.id ? { ...e, category: cat } : e)); }}
+          onLinkCard={() => { setSelectedExpenseId(null); setLinkingId(exp.id); }}
+          onDelete={() => { handleDelete(exp.id); setSelectedExpenseId(null); }}
+        />;
+      })()}
+
+      {/* Card Payment Modal */}
       {linkingId && <CardPaymentModal
         expense={allExpenses.find(e => e.id === linkingId)}
         cards={cards.filter(c => c.card_type === "credit_card")}
@@ -477,6 +493,102 @@ function CardPaymentModal({ expense, cards, onLink, onClose }) {
           style={{ width: "100%", marginTop: 12, padding: "12px" }}>
           Cancel
         </button>
+      </div>
+    </>
+  );
+}
+
+function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCard, onDelete }) {
+  const [editCat, setEditCat] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const e = expense;
+  const si = getSourceInfo(e.source);
+  const bankColor = si.bank ? (BANK_COLORS[si.bank] || "#6b7280") : "#6b7280";
+  const catColor = CATEGORY_COLORS[e.category] || "#6b7280";
+  const time = formatTime(e.date);
+  const fullDate = new Date(e.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const isCredit = e.amount < 0;
+  const ccCards = cards.filter(c => c.card_type === "credit_card");
+
+  return (
+    <>
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 200 }} onClick={onClose} />
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 201,
+        background: "var(--bg-card)", borderRadius: "16px 16px 0 0",
+        padding: "20px", paddingBottom: "max(20px, env(safe-area-inset-bottom))",
+        maxHeight: "80vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2, margin: "0 auto 20px" }} />
+
+        {/* Amount */}
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 32, fontWeight: 700, color: isCredit ? "var(--green)" : "var(--text)" }}>
+            {isCredit ? "+" : ""}{"₹" + Number(Math.abs(e.amount)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>{isCredit ? "Credit / Refund" : "Debit"}</div>
+        </div>
+
+        {/* Description */}
+        <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Description</div>
+          <div style={{ fontSize: 15, fontWeight: 500, wordBreak: "break-word" }}>{e.description || "No description"}</div>
+        </div>
+
+        {/* Details grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Date</div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginTop: 2 }}>{fullDate}</div>
+            {time && <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{time}</div>}
+          </div>
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Payment</div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginTop: 2, textTransform: "capitalize" }}>{e.payment_method.replace("_", " ")}</div>
+          </div>
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Source</div>
+            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, fontWeight: 600, background: bankColor + "22", color: bankColor, marginTop: 2, display: "inline-block" }}>{si.label}</span>
+          </div>
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Category</div>
+            {editCat ? (
+              <select value={e.category} onChange={(ev) => { onCategoryChange(ev.target.value); setEditCat(false); }} autoFocus
+                style={{ marginTop: 2, minHeight: 28, fontSize: 12, width: "100%", borderRadius: 6 }}>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, cursor: "pointer" }} onClick={() => setEditCat(true)}>
+                <span style={{ fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: catColor + "22", color: catColor, textTransform: "capitalize" }}>{e.category}</span>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>edit</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {e.reference_id && (
+          <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Reference ID</div>
+            <div style={{ fontSize: 12, fontFamily: "monospace", marginTop: 2, wordBreak: "break-all" }}>{e.reference_id}</div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          {ccCards.length > 0 && e.amount > 0 && e.category !== "transfer" && (
+            <button onClick={onLinkCard} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px" }}>
+              <CreditCard size={16} /> Card Payment
+            </button>
+          )}
+          {confirmDelete ? (
+            <button className="danger" onClick={onDelete} style={{ flex: 1, padding: "12px" }}>Confirm Delete</button>
+          ) : (
+            <button className="secondary" onClick={() => setConfirmDelete(true)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px" }}>
+              <Trash2 size={14} /> Delete
+            </button>
+          )}
+        </div>
+        <button className="secondary" onClick={onClose} style={{ width: "100%", marginTop: 8, padding: "10px" }}>Close</button>
       </div>
     </>
   );
