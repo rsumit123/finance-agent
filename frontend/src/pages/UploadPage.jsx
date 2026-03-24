@@ -21,9 +21,12 @@ export default function UploadPage() {
 
   // Gmail state
   const [gmailStatus, setGmailStatus] = useState(null);
+  const [gmailLoading, setGmailLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncJobId, setSyncJobId] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
+  const [syncResultExpanded, setSyncResultExpanded] = useState(false);
+  const [syncCompletedAt, setSyncCompletedAt] = useState(null);
   const [syncAfter, setSyncAfter] = useState("");
   const [syncBefore, setSyncBefore] = useState("");
 
@@ -34,17 +37,22 @@ export default function UploadPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const refreshAll = () => {
-    getUploadHistory().then(setHistory).catch(() => {});
-    getGmailStatus().then(setGmailStatus).catch(() => {});
-    getPasswords().then(setPasswords).catch(() => {});
-    // Load last sync result
-    getLatestSync().then((job) => {
-      if (job?.status === "completed" && job.result) setSyncResult(job.result);
-      if (job?.status === "running" || job?.status === "pending") {
-        setSyncing(true);
-        setSyncJobId(job.job_id);
-      }
-    }).catch(() => {});
+    setGmailLoading(true);
+    Promise.all([
+      getUploadHistory().then(setHistory).catch(() => {}),
+      getGmailStatus().then(setGmailStatus).catch(() => {}),
+      getPasswords().then(setPasswords).catch(() => {}),
+      getLatestSync().then((job) => {
+        if (job?.status === "completed" && job.result) {
+          setSyncResult(job.result);
+          setSyncCompletedAt(job.completed_at);
+        }
+        if (job?.status === "running" || job?.status === "pending") {
+          setSyncing(true);
+          setSyncJobId(job.job_id);
+        }
+      }).catch(() => {}),
+    ]).finally(() => setGmailLoading(false));
   };
 
   useEffect(refreshAll, []);
@@ -58,6 +66,8 @@ export default function UploadPage() {
         if (job.status === "completed") {
           setSyncing(false);
           setSyncResult(job.result);
+          setSyncCompletedAt(job.completed_at);
+          setSyncResultExpanded(true); // Auto-expand new results
           setSyncJobId(null);
           refreshAll();
         } else if (job.status === "failed") {
@@ -163,7 +173,9 @@ export default function UploadPage() {
           <Mail size={18} /> Gmail
         </h2>
 
-        {gmailStatus?.connected ? (
+        {gmailLoading ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text-dim)" }}>Loading...</div>
+        ) : gmailStatus?.connected ? (
           <div>
             {/* Connected badge + summary */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
@@ -242,12 +254,29 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* Results */}
+            {/* Results — collapsible */}
             {syncResult && !syncResult.error && (
-              <>
-                {syncResult.alerts && <SyncResultCard title="Transaction Alerts" result={syncResult.alerts} type="alerts" />}
-                {syncResult.statements && <SyncResultCard title="PDF Statements" result={syncResult.statements} type="statements" />}
-              </>
+              <div style={{ marginTop: 12 }}>
+                <button
+                  className="secondary"
+                  onClick={() => setSyncResultExpanded(!syncResultExpanded)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", fontSize: 13 }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <CheckCircle size={14} style={{ color: "var(--green)" }} />
+                    Last sync {syncCompletedAt ? new Date(syncCompletedAt).toLocaleString() : ""}
+                    {syncResult.alerts && ` · ${syncResult.alerts.imported || 0} alerts`}
+                    {syncResult.statements && ` · ${syncResult.statements.imported || 0} statements`}
+                  </span>
+                  {syncResultExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {syncResultExpanded && (
+                  <div style={{ borderTop: "1px solid var(--border)" }}>
+                    {syncResult.alerts && <SyncResultCard title="Transaction Alerts" result={syncResult.alerts} type="alerts" />}
+                    {syncResult.statements && <SyncResultCard title="PDF Statements" result={syncResult.statements} type="statements" />}
+                  </div>
+                )}
+              </div>
             )}
             {syncResult?.error && <ErrorMsg msg={syncResult.error} />}
 
