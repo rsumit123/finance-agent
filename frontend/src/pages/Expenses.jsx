@@ -340,11 +340,11 @@ export default function Expenses() {
             const bankColor = si.bank ? (BANK_COLORS[si.bank] || "#6b7280") : (si.type === "manual" ? "#22c55e" : "#6b7280");
 
             return (
-              <div key={e.id} style={{
+              <div key={e.id} onClick={() => setSelectedExpenseId(e.id)} style={{
                 background: "var(--bg-card)", border: "1px solid var(--border)",
                 borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
-                cursor: "pointer",
-              }} onClick={() => setSelectedExpenseId(e.id)}>
+                cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              }}>
                 <div style={{ flexShrink: 0, width: 44, textAlign: "center", background: "var(--bg-input)", borderRadius: 8, padding: "6px 4px" }}>
                   <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>{day}</div>
                   <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>{month}</div>
@@ -354,42 +354,22 @@ export default function Expenses() {
                   <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {e.description || "—"}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }} onClick={(ev) => ev.stopPropagation()}>
-                    {editingId === e.id ? (
-                      <select value={e.category} onChange={(ev) => handleCategoryChange(e.id, ev.target.value)} onBlur={() => setEditingId(null)} autoFocus
-                        style={{ minHeight: 24, padding: "1px 4px", fontSize: 11, width: "auto", borderRadius: 4 }}>
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    ) : (
-                      <span onClick={() => setEditingId(e.id)} style={{
-                        fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4, cursor: "pointer",
-                        background: catColor + "22", color: catColor, textTransform: "capitalize",
-                      }}>{e.category}</span>
-                    )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4,
+                      background: catColor + "22", color: catColor, textTransform: "capitalize",
+                    }}>{e.category}</span>
                     <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{e.payment_method.replace("_", " ")}</span>
                     {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
                     <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, fontWeight: 600, background: bankColor + "22", color: bankColor }}>{si.label}</span>
                   </div>
                 </div>
 
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: e.amount < 0 ? "var(--green)" : "var(--text)" }}>
                     {e.amount < 0 ? "+" + formatINR(Math.abs(e.amount)) : formatINR(e.amount)}
                   </div>
-                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 2 }} onClick={(ev) => ev.stopPropagation()}>
-                    {cards.length > 0 && e.amount > 0 && e.category !== "transfer" && (
-                      <button onClick={() => setLinkingId(e.id)} style={{
-                        background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, cursor: "pointer", opacity: 0.4,
-                      }} title="Mark as card payment"><CreditCard size={12} /></button>
-                    )}
-                    {deleteConfirmId === e.id ? (
-                      <button onClick={() => handleDelete(e.id)} className="danger" style={{ padding: "2px 6px", fontSize: 10, minHeight: 0 }}>Delete?</button>
-                    ) : (
-                      <button onClick={() => handleDelete(e.id)} style={{
-                        background: "none", border: "none", color: "var(--text-dim)", padding: 2, minHeight: 0, cursor: "pointer", opacity: 0.4,
-                      }} title="Delete"><Trash2 size={12} /></button>
-                    )}
-                  </div>
+                  <ChevronRight size={14} style={{ color: "var(--text-dim)", opacity: 0.4 }} />
                 </div>
               </div>
             );
