@@ -143,5 +143,18 @@ export const deletePassword = (id) =>
 export const clearAllData = () =>
   api.post("/api/settings/clear-data").then((r) => r.data);
 
+// Cards
+export const getCards = () =>
+  api.get("/api/cards/").then((r) => r.data);
+
+export const detectCards = () =>
+  api.post("/api/cards/detect").then((r) => r.data);
+
+export const linkCardPayment = (expenseId, cardId) =>
+  api.post("/api/cards/link-payment", null, { params: { expense_id: expenseId, card_id: cardId } }).then((r) => r.data);
+
+export const unlinkCardPayment = (expenseId) =>
+  api.post("/api/cards/unlink-payment", null, { params: { expense_id: expenseId } }).then((r) => r.data);
+
 export const recategorize = (userName = "") =>
   api.post("/api/settings/recategorize", null, { params: { user_name: userName } }).then((r) => r.data);

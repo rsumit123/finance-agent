@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CreditCard, Landmark, Mail, FileText, PenLine, ChevronRight, ChevronDown, ChevronUp, ArrowLeft, Info } from "lucide-react";
-import { getSources, getExpenses, getNetworth } from "../api/client";
+import { getSources, getExpenses, getNetworth, detectCards } from "../api/client";
 
 const BANK_COLORS = {
   HDFC: "#004b87", Axis: "#97144d", Scapia: "#6366f1",
@@ -41,6 +41,7 @@ export default function StatementsPage() {
     Promise.all([
       getSources().then(setSources),
       getNetworth().then(setNetworth),
+      detectCards().catch(() => {}), // auto-detect cards on first visit
     ]).catch(() => {}).finally(() => setLoading(false));
   }, []);
 

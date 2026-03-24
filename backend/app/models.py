@@ -55,6 +55,19 @@ class Category(str, enum.Enum):
     OTHER = "other"
 
 
+class Card(Base):
+    __tablename__ = "cards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    bank_name = Column(String(100), nullable=False)  # e.g. "Axis", "HDFC"
+    card_type = Column(String(50), nullable=False)    # "credit_card" or "bank_account"
+    last_four = Column(String(10), default="")        # e.g. "1088"
+    nickname = Column(String(100), default="")        # user-given name
+    source_prefix = Column(String(100), default="")   # e.g. "stmt_axis_cc" for auto-matching
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Expense(Base):
     __tablename__ = "expenses"
 
@@ -67,6 +80,7 @@ class Expense(Base):
     date = Column(DateTime, nullable=False)
     source = Column(String(50), default="manual")
     reference_id = Column(String(100), default="")
+    card_id = Column(Integer, nullable=True)           # links to Card for CC payment tracking
     created_at = Column(DateTime, server_default=func.now())
 
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { getExpenses, addExpense, deleteExpense, updateExpense } from "../api/client";
+import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment } from "../api/client";
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
@@ -96,6 +96,8 @@ export default function Expenses() {
   const [page, setPage] = useState(0);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [linkingId, setLinkingId] = useState(null); // expense id being linked to a card
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("date_desc");
   const [categoryFilter, setCategoryFilter] = useState(navState.category || "");
@@ -134,6 +136,7 @@ export default function Expenses() {
   };
 
   useEffect(load, [selectedYear, selectedMonth, weekOffset, mode]);
+  useEffect(() => { getCards().then(setCards).catch(() => {}); }, []);
 
   const goBack = () => {
     if (mode === "month") {
@@ -201,9 +204,21 @@ export default function Expenses() {
   };
 
   const handleCategoryChange = async (id, newCat) => {
+    if (newCat === "__card_payment__") {
+      // Show card picker
+      setLinkingId(id);
+      setEditingId(null);
+      return;
+    }
     await updateExpense(id, { category: newCat });
     setAllExpenses((prev) => prev.map((e) => e.id === id ? { ...e, category: newCat } : e));
     setEditingId(null);
+  };
+
+  const handleLinkCard = async (expenseId, cardId) => {
+    await linkCardPayment(expenseId, cardId);
+    setAllExpenses((prev) => prev.map((e) => e.id === expenseId ? { ...e, category: "transfer", card_id: cardId } : e));
+    setLinkingId(null);
   };
 
   const hasActiveFilters = categoryFilter || bankFilter || txnTypeFilter || search;
@@ -338,10 +353,22 @@ export default function Expenses() {
                     {e.description || "—"}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
-                    {editingId === e.id ? (
+                    {linkingId === e.id ? (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {cards.filter(c => c.card_type === "credit_card").map((c) => (
+                          <button key={c.id} onClick={() => handleLinkCard(e.id, c.id)}
+                            style={{ padding: "2px 8px", fontSize: 10, minHeight: 0, borderRadius: 4 }}>
+                            {c.bank_name} {c.last_four ? `••${c.last_four}` : "CC"}
+                          </button>
+                        ))}
+                        <button className="secondary" onClick={() => setLinkingId(null)}
+                          style={{ padding: "2px 6px", fontSize: 10, minHeight: 0 }}>Cancel</button>
+                      </div>
+                    ) : editingId === e.id ? (
                       <select value={e.category} onChange={(ev) => handleCategoryChange(e.id, ev.target.value)} onBlur={() => setEditingId(null)} autoFocus
                         style={{ minHeight: 24, padding: "1px 4px", fontSize: 11, width: "auto", borderRadius: 4 }}>
                         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        {cards.length > 0 && <option value="__card_payment__">💳 Card Payment</option>}
                       </select>
                     ) : (
                       <span onClick={() => setEditingId(e.id)} style={{
