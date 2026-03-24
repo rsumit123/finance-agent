@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Key, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Lock, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader, Info } from "lucide-react";
 import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, getSyncStatus, getLatestSync, disconnectGmail, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
 
 function formatINR(n) {
@@ -170,7 +170,8 @@ export default function UploadPage() {
       {/* ===== GMAIL SECTION ===== */}
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Mail size={18} /> Gmail
+          <Mail size={18} /> Gmail Sync
+          <InfoTip text="Automatically reads transaction alert emails and downloads credit card/bank statement PDFs from your Gmail. Only reads bank-related emails — nothing else." />
         </h2>
 
         {gmailLoading ? (
@@ -298,14 +299,12 @@ export default function UploadPage() {
         )}
       </div>
 
-      {/* ===== PDF PASSWORDS ===== */}
+      {/* ===== STATEMENT PASSWORDS ===== */}
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Key size={18} /> PDF Passwords
+          <Lock size={18} /> Statement Passwords
+          <InfoTip text="Indian bank and credit card statements are password-protected (usually your date of birth or PAN). Add your passwords here — they'll be tried automatically when syncing from Gmail or uploading manually." />
         </h2>
-        <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-          Indian bank PDFs are password-protected. Saved passwords are tried automatically during Gmail statement sync and manual uploads.
-        </p>
         {passwords.length > 0 && (
           <div style={{ marginBottom: 10 }}>
             {passwords.map((pw) => (
@@ -325,10 +324,11 @@ export default function UploadPage() {
         </div>
       </div>
 
-      {/* ===== MANUAL PDF UPLOAD ===== */}
+      {/* ===== MANUAL STATEMENT UPLOAD ===== */}
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <FileText size={18} /> Manual PDF Upload
+          <Upload size={18} /> Manual Statement Upload
+          <InfoTip text="Upload a bank statement, credit card bill, or UPI export PDF directly. We auto-detect the format (HDFC, Axis, PhonePe, etc.) and extract all transactions. Duplicates are skipped automatically." />
         </h2>
         <div
           className={`upload-zone ${dragover ? "dragover" : ""}`}
@@ -549,5 +549,32 @@ function ErrorMsg({ msg }) {
     <p style={{ color: "var(--red)", marginTop: 10, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
       <AlertTriangle size={14} /> {msg}
     </p>
+  );
+}
+
+function InfoTip({ text }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      <Info
+        size={14}
+        style={{ color: "var(--text-dim)", cursor: "pointer", opacity: 0.6 }}
+        onClick={(e) => { e.stopPropagation(); setShow(!show); }}
+      />
+      {show && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShow(false)} />
+          <div style={{
+            position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+            marginTop: 6, width: 260, padding: "10px 14px",
+            background: "var(--bg-card)", border: "1px solid var(--border)",
+            borderRadius: 8, fontSize: 12, lineHeight: 1.5, color: "var(--text-dim)",
+            zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          }}>
+            {text}
+          </div>
+        </>
+      )}
+    </span>
   );
 }
