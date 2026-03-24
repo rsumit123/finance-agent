@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard } from "lucide-react";
-import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment } from "../api/client";
+import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar } from "../api/client";
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
-  "health", "education", "groceries", "rent", "emi", "transfer",
-  "atm", "salary", "other",
+  "subscriptions", "health", "education", "groceries", "rent",
+  "emi", "transfer", "atm", "salary", "other",
 ];
 
 const CATEGORY_COLORS = {
@@ -14,7 +14,7 @@ const CATEGORY_COLORS = {
   entertainment: "#ec4899", bills: "#ef4444", health: "#22c55e",
   education: "#06b6d4", groceries: "#14b8a6", rent: "#eab308",
   emi: "#f43f5e", transfer: "#64748b", atm: "#a855f7",
-  salary: "#10b981", other: "#6b7280",
+  salary: "#10b981", subscriptions: "#0ea5e9", other: "#6b7280",
 };
 
 const BANK_COLORS = {
@@ -394,10 +394,15 @@ export default function Expenses() {
         return <TransactionDetail
           expense={exp}
           cards={cards}
-          onClose={() => setSelectedExpenseId(null)}
+          onClose={() => { setSelectedExpenseId(null); load(); }}
           onCategoryChange={(cat) => { handleCategoryChange(exp.id, cat); setAllExpenses(prev => prev.map(e => e.id === exp.id ? { ...e, category: cat } : e)); }}
           onLinkCard={() => { setSelectedExpenseId(null); setLinkingId(exp.id); }}
           onDelete={() => { handleDelete(exp.id); setSelectedExpenseId(null); }}
+          onApplyToSimilar={async (expId, cat) => {
+            const res = await applyCategoryToSimilar(expId, cat);
+            load(); // Reload to reflect changes
+            return res;
+          }}
         />;
       })()}
 
@@ -478,9 +483,12 @@ function CardPaymentModal({ expense, cards, onLink, onClose }) {
   );
 }
 
-function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCard, onDelete }) {
+function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCard, onDelete, onApplyToSimilar }) {
   const [editCat, setEditCat] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showApplyAll, setShowApplyAll] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
+  const [pendingCategory, setPendingCategory] = useState(null);
   const e = expense;
   const si = getSourceInfo(e.source);
   const bankColor = si.bank ? (BANK_COLORS[si.bank] || "#6b7280") : "#6b7280";
@@ -533,8 +541,13 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
           <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px" }}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Category</div>
             {editCat ? (
-              <select value={e.category} onChange={(ev) => { onCategoryChange(ev.target.value); setEditCat(false); }} autoFocus
-                style={{ marginTop: 2, minHeight: 28, fontSize: 12, width: "100%", borderRadius: 6 }}>
+              <select value={e.category} onChange={(ev) => {
+                const newCat = ev.target.value;
+                onCategoryChange(newCat);
+                setEditCat(false);
+                setPendingCategory(newCat);
+                setShowApplyAll(true);
+              }} autoFocus style={{ marginTop: 2, minHeight: 28, fontSize: 12, width: "100%", borderRadius: 6 }}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             ) : (
@@ -550,6 +563,41 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
           <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Reference ID</div>
             <div style={{ fontSize: 12, fontFamily: "monospace", marginTop: 2, wordBreak: "break-all" }}>{e.reference_id}</div>
+          </div>
+        )}
+
+        {/* Apply to all similar */}
+        {showApplyAll && pendingCategory && !applyResult && (
+          <div style={{
+            background: "rgba(99,102,241,0.1)", border: "1px solid var(--accent)",
+            borderRadius: 10, padding: "12px 14px", marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+              Apply "{pendingCategory}" to all similar transactions?
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+              This will update all transactions with a similar description and remember for future imports.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={async () => {
+                const res = await onApplyToSimilar(e.id, pendingCategory);
+                setApplyResult(res);
+                setShowApplyAll(false);
+              }} style={{ flex: 1, fontSize: 13, padding: "10px" }}>
+                Apply to All ({pendingCategory})
+              </button>
+              <button className="secondary" onClick={() => setShowApplyAll(false)} style={{ padding: "10px 14px", fontSize: 13 }}>
+                Just This One
+              </button>
+            </div>
+          </div>
+        )}
+        {applyResult && (
+          <div style={{
+            background: "var(--green-bg)", border: "1px solid var(--green)",
+            borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "var(--green)",
+          }}>
+            Updated {applyResult.updated} similar transactions to "{applyResult.category}"
           </div>
         )}
 

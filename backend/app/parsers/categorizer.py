@@ -7,6 +7,14 @@ import re
 
 # Category keywords — ordered by specificity (more specific first)
 CATEGORY_KEYWORDS = {
+    "subscriptions": [
+        "netflix", "hotstar", "spotify", "youtube premium", "google play",
+        "prime video", "amazon prime", "disney", "zee5", "sonyliv", "jiocinema",
+        "claude", "anthropic", "openai", "chatgpt", "cursor", "github copilot",
+        "notion", "slack premium", "figma", "canva pro",
+        "google cloud", "aws", "azure", "digitalocean", "heroku",
+        "cloudflare", "vercel", "netlify",
+    ],
     "food": [
         "swiggy", "zomato", "restaurant", "food", "cafe", "pizza", "mcdonald",
         "domino", "kfc", "starbucks", "chai", "barista", "hotel", "madrasi",
@@ -26,19 +34,15 @@ CATEGORY_KEYWORDS = {
         "airlines", "indigo", "air india", "vistara", "spicejet",
     ],
     "entertainment": [
-        "netflix", "hotstar", "spotify", "movie", "pvr", "inox",
-        "bookmyshow", "prime video", "cinepolis", "youtube", "google play",
-        "cinema", "theatre", "disney", "zee5", "sonyliv", "jiocinema",
-        "bigtree entertainment", "apple india", "apple.com",
+        "movie", "pvr", "inox", "bookmyshow", "cinepolis",
+        "cinema", "theatre", "bigtree entertainment", "apple india", "apple.com",
     ],
     "bills": [
         "electricity", "water bill", "gas bill", "broadband", "jio",
         "airtel", "vi ", "bsnl", "tata play", "recharge", "prepaid",
         "postpaid", "finance charges", "late fee", "gst", "igst", "cgst",
         "foreign currency transaction fee", "dcc markup", "annual fee",
-        "aws", "google cloud", "azure", "cursor", "openai", "chatgpt",
-        "claude", "anthropic", "github", "digitalocean", "heroku",
-        "cloudflare", "vercel", "netlify", "notion", "slack",
+        "github",
         "insurance", "lic", "premium", "openrouter", "google ",
         "federal bank", "salon", "jawed habib", "parlour", "parlor",
     ],

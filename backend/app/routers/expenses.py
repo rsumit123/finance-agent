@@ -498,6 +498,55 @@ def _learn_category_rule(db, user_id: int, description: str, category: str):
         db.add(CategoryRule(user_id=user_id, keyword=keyword, category=category))
 
 
+@router.post("/apply-category")
+def apply_category_to_similar(
+    expense_id: int = Query(...),
+    category: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply a category to all transactions with similar descriptions."""
+    import re
+    expense = get_expense(db, expense_id, user_id=current_user.id)
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    # Normalize description for matching
+    desc = (expense.description or "").lower()
+    desc = re.sub(r"\(.*?\)", "", desc)
+    desc = re.sub(r"\d{6,}", "", desc)
+    desc = re.sub(r"[^a-z\s]", "", desc)
+    desc = re.sub(r"\s+", " ", desc).strip()
+    words = [w for w in desc.split() if len(w) > 2]
+    keyword = " ".join(words[:3])
+
+    if len(keyword) < 4:
+        return {"updated": 0, "keyword": ""}
+
+    # Find and update all matching expenses
+    all_expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
+    updated = 0
+    for e in all_expenses:
+        e_desc = (e.description or "").lower()
+        e_desc = re.sub(r"[^a-z\s]", "", e_desc)
+        if keyword in e_desc and e.category != category:
+            e.category = category
+            updated += 1
+
+    # Also save as a learned rule
+    from ..models import CategoryRule
+    existing_rule = db.query(CategoryRule).filter(
+        CategoryRule.user_id == current_user.id, CategoryRule.keyword == keyword,
+    ).first()
+    if existing_rule:
+        existing_rule.category = category
+    else:
+        db.add(CategoryRule(user_id=current_user.id, keyword=keyword, category=category))
+
+    db.commit()
+    return {"updated": updated, "keyword": keyword, "category": category}
+
+
 @router.delete("/{expense_id}")
 def remove_expense(
     expense_id: int,

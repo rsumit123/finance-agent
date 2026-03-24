@@ -42,6 +42,9 @@ export const updateExpense = (id, updates) =>
 export const deleteExpense = (id) =>
   api.delete(`/api/expenses/${id}`).then((r) => r.data);
 
+export const applyCategoryToSimilar = (expenseId, category) =>
+  api.post("/api/expenses/apply-category", null, { params: { expense_id: expenseId, category } }).then((r) => r.data);
+
 export const getExpenseSummary = ({ period, start_date, end_date } = {}) => {
   const params = {};
   if (start_date && end_date) {
