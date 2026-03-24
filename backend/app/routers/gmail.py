@@ -219,33 +219,6 @@ def gmail_sync(
     return {"job_id": job_id, "status": "pending", "message": "Sync started"}
 
 
-@router.get("/sync/{job_id}")
-def get_sync_status(
-    job_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Poll sync job status."""
-    job = db.query(SyncJob).filter(SyncJob.id == job_id, SyncJob.user_id == current_user.id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    response = {
-        "job_id": job.id,
-        "status": job.status,
-        "job_type": job.job_type,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-    }
-
-    if job.status == "completed" and job.result:
-        response["result"] = json_lib.loads(job.result)
-    if job.status == "failed":
-        response["error"] = job.error
-
-    return response
-
-
 @router.get("/sync/latest")
 def get_latest_sync(
     db: Session = Depends(get_db),
@@ -270,6 +243,33 @@ def get_latest_sync(
         response["result"] = json_lib.loads(job.result)
     if job.status == "failed":
         response["error"] = job.error
+    return response
+
+
+@router.get("/sync/{job_id}")
+def get_sync_status(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Poll sync job status."""
+    job = db.query(SyncJob).filter(SyncJob.id == job_id, SyncJob.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    response = {
+        "job_id": job.id,
+        "status": job.status,
+        "job_type": job.job_type,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+
+    if job.status == "completed" and job.result:
+        response["result"] = json_lib.loads(job.result)
+    if job.status == "failed":
+        response["error"] = job.error
+
     return response
 
 
