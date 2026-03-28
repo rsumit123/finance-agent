@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MoneyFlow</string>
+    <string name="title_activity_main">MoneyFlow</string>
+    <string name="package_name">com.skdev.moneyflow</string>
+    <string name="custom_url_scheme">com.skdev.moneyflow</string>
+</resources>

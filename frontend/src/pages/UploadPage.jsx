@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Lock, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader, Info } from "lucide-react";
 import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, getSyncStatus, getLatestSync, disconnectGmail, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
+import { isSmsAvailable, syncSmsMessages } from "../services/smsSync";
+import { apiInstance } from "../api/client";
+import { Smartphone } from "lucide-react";
 
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -35,6 +38,11 @@ export default function UploadPage() {
   const [newPwLabel, setNewPwLabel] = useState("");
   const [newPwValue, setNewPwValue] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // SMS state
+  const [smsAvailable] = useState(isSmsAvailable());
+  const [smsSyncing, setSmsSyncing] = useState(false);
+  const [smsResult, setSmsResult] = useState(null);
 
   const refreshAll = () => {
     setGmailLoading(true);
@@ -145,6 +153,20 @@ export default function UploadPage() {
     refreshAll();
   };
 
+  const handleSmsSync = async () => {
+    setSmsSyncing(true);
+    setSmsResult(null);
+    try {
+      const result = await syncSmsMessages(apiInstance, 90);
+      setSmsResult(result);
+      if (result && !result.error) refreshAll();
+    } catch (err) {
+      setSmsResult({ error: err.message || "SMS sync failed" });
+    } finally {
+      setSmsSyncing(false);
+    }
+  };
+
   const handleAddPassword = async () => {
     if (!newPwValue) return;
     await addPassword(newPwLabel || "Untitled", newPwValue);
@@ -166,6 +188,39 @@ export default function UploadPage() {
         <h1>Import Transactions</h1>
         <p>Connect Gmail or upload PDF statements</p>
       </div>
+
+      {/* ===== SMS SECTION (mobile only) ===== */}
+      {smsAvailable && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Smartphone size={18} /> SMS Sync
+            <InfoTip text="Reads transaction alert SMS from your phone's inbox. Extracts amount, merchant, date, and available balance from bank messages. Most accurate and real-time source." />
+          </h2>
+
+          <button onClick={handleSmsSync} disabled={smsSyncing}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, padding: "14px 16px" }}>
+            {smsSyncing ? (
+              <><RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} /> Reading SMS...</>
+            ) : (
+              <><Smartphone size={16} /> Sync Bank SMS</>
+            )}
+          </button>
+
+          {smsResult && !smsResult.error && (
+            <div style={{ marginTop: 12, background: "var(--bg-input)", borderRadius: 8, padding: 12 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <StatCard value={smsResult.imported} label="New" color="green" small />
+                <StatCard value={smsResult.duplicates} label="Duplicates" color="yellow" small />
+                <StatCard value={smsResult.messages_processed} label="SMS Read" color="dim" small />
+                {smsResult.balances_extracted > 0 && (
+                  <StatCard value={smsResult.balances_extracted} label="Balances" color="green" small />
+                )}
+              </div>
+            </div>
+          )}
+          {smsResult?.error && <ErrorMsg msg={smsResult.error} />}
+        </div>
+      )}
 
       {/* ===== GMAIL SECTION ===== */}
       <div className="card" style={{ marginBottom: 20 }}>

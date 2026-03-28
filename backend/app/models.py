@@ -139,6 +139,20 @@ class SyncJob(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+class AccountBalance(Base):
+    __tablename__ = "account_balances"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    card_id = Column(Integer, nullable=True)
+    bank_name = Column(String(100), default="")
+    account_hint = Column(String(10), default="")  # last 4 digits
+    balance = Column(Float, nullable=False)
+    balance_date = Column(DateTime, nullable=False)
+    source = Column(String(50), default="sms")  # sms, statement
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class CategoryRule(Base):
     __tablename__ = "category_rules"
 
