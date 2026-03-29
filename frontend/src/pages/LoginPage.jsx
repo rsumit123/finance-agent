@@ -21,13 +21,17 @@ export default function LoginPage() {
   // Initialize native Google Auth
   useEffect(() => {
     if (!isNative) return;
-    import("@codetrix-studio/capacitor-google-auth").then(({ GoogleAuth }) => {
-      GoogleAuth.initialize({
-        clientId: GOOGLE_CLIENT_ID,
-        scopes: ["profile", "email"],
-        grantOfflineAccess: false,
-      });
-    });
+    try {
+      import("@codetrix-studio/capacitor-google-auth").then(({ GoogleAuth }) => {
+        GoogleAuth.initialize({
+          clientId: GOOGLE_CLIENT_ID,
+          scopes: ["profile", "email"],
+          grantOfflineAccess: false,
+        });
+      }).catch((err) => console.error("GoogleAuth init error:", err));
+    } catch (err) {
+      console.error("GoogleAuth import error:", err);
+    }
   }, []);
 
   const handleGoogleLogin = async () => {

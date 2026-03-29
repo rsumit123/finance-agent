@@ -10,8 +10,10 @@ import { getTransactionInfo } from "transaction-sms-parser";
 // Bank sender ID patterns
 const BANK_SENDER_PATTERNS = [
   "HDFC", "AXIS", "SBI", "KOTAK", "SCAPIA", "ICICI",
-  "FED", "BOB", "BARODA", "PNB", "IDFC", "YES", "INDUS",
+  "FED", "FEDBK", "FEDBNK", "SCPFED", "FEDSCP",
+  "BOB", "BARODA", "PNB", "IDFC", "YES", "INDUS",
   "CITI", "HSBC", "STAN", "NIYO", "UNI", "SLICE", "PAYTM",
+  "CANBNK", "IOB", "BOBIBN", "UNIONB",
 ];
 
 export function isSmsAvailable() {
@@ -47,9 +49,14 @@ export async function syncSmsMessages(api, daysBack = 90) {
 
     const messages = result.smsList || [];
 
-    // Filter to bank SMS
+    // Filter to potential bank SMS using two strategies:
+    // 1. TRAI suffix: sender ends with -T (transactional) or -S (service)
+    // 2. Known bank sender ID patterns as fallback
     const bankMessages = messages.filter((msg) => {
       const sender = (msg.address || "").toUpperCase();
+      // TRAI mandated suffix (since May 2025): XX-HEADER-T or XX-HEADER-S
+      if (sender.endsWith("-T") || sender.endsWith("-S")) return true;
+      // Fallback: check against known bank patterns
       return BANK_SENDER_PATTERNS.some((pat) => sender.includes(pat));
     });
 

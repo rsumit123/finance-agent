@@ -211,7 +211,7 @@ def _detect_bank_from_sender(sender: str) -> str:
     s = (sender or "").upper()
     bank_map = {
         "hdfc": ["HDFC"], "axis": ["AXIS"], "sbi": ["SBI"],
-        "kotak": ["KOTAK"], "scapia": ["SCAPIA", "FEDBK", "FED"],
+        "kotak": ["KOTAK"], "scapia": ["SCAPIA", "FEDBK", "FED", "FEDSCP"],
         "icici": ["ICICI"], "bob": ["BOB", "BARODA"], "idfc": ["IDFC"],
         "yes_bank": ["YESBK"], "indusind": ["INDUS"],
         "citi": ["CITI"], "hsbc": ["HSBC"],

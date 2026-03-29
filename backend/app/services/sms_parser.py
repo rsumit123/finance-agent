@@ -182,7 +182,7 @@ def _detect_bank_from_sender(sender: str) -> str:
         "axis": ["AXISBK", "AXIS", "AXISBNK"],
         "sbi": ["SBIBNK", "SBIETX", "SBIINB", "ATMSBI"],
         "kotak": ["KOTAKB", "KOTAK", "KOTAKM"],
-        "scapia": ["SCAPIA", "FEDBK", "FEDBNK"],
+        "scapia": ["SCAPIA", "FEDBK", "FEDBNK", "FEDSCP"],
         "icici": ["ICICIB", "ICICI", "ICICIB"],
         "bob": ["BOBTXN", "BARODA"],
         "pnb": ["PNBSMS"],

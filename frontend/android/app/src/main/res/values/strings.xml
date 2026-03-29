@@ -4,4 +4,5 @@
     <string name="title_activity_main">MoneyFlow</string>
     <string name="package_name">com.skdev.moneyflow</string>
     <string name="custom_url_scheme">com.skdev.moneyflow</string>
+    <string name="server_client_id">929006071236-feqt94b4t8ltebpod8hmavt52hrd40gk.apps.googleusercontent.com</string>
 </resources>
