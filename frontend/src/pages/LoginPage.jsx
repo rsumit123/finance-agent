@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Wallet } from "lucide-react";
+import { Wallet, Loader } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { useAuth } from "../auth/AuthContext";
 
@@ -124,20 +124,39 @@ export function LoginCallback() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [status, setStatus] = useState("Connecting to server...");
 
   useEffect(() => {
     const token = searchParams.get("token");
     if (token) {
+      setStatus("Signing you in...");
       login(token);
-      navigate("/", { replace: true });
+      // Small delay to let auth state settle before navigating
+      setTimeout(() => navigate("/", { replace: true }), 500);
     } else {
-      navigate("/login", { replace: true });
+      setStatus("No token received. Redirecting...");
+      setTimeout(() => navigate("/login", { replace: true }), 1000);
     }
   }, [searchParams, login, navigate]);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
-      Signing you in...
+    <div style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 16,
+      background: "var(--bg)", padding: 20,
+    }}>
+      <div style={{
+        background: "var(--bg-card)", border: "1px solid var(--border)",
+        borderRadius: 16, padding: "48px 40px", textAlign: "center",
+        maxWidth: 360, width: "100%",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20 }}>
+          <Wallet size={28} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>MoneyFlow</span>
+        </div>
+        <Loader size={28} style={{ color: "var(--accent)", animation: "spin 1s linear infinite", marginBottom: 16 }} />
+        <p style={{ color: "var(--text-dim)", fontSize: 14 }}>{status}</p>
+      </div>
     </div>
   );
 }

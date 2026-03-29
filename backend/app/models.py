@@ -163,6 +163,16 @@ class CategoryRule(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    key = Column(String(100), nullable=False)  # e.g. "excluded_banks"
+    value = Column(Text, default="")  # JSON string
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class UploadHistory(Base):
     __tablename__ = "upload_history"
 

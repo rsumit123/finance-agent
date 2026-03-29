@@ -146,6 +146,12 @@ export const deletePassword = (id) =>
 export const clearAllData = () =>
   api.post("/api/settings/clear-data").then((r) => r.data);
 
+export const getExcludedBanks = () =>
+  api.get("/api/settings/excluded-banks").then((r) => r.data);
+
+export const setExcludedBanks = (banks) =>
+  api.put("/api/settings/excluded-banks", { banks }).then((r) => r.data);
+
 // Cards
 export const getCards = () =>
   api.get("/api/cards/").then((r) => r.data);

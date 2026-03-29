@@ -38,6 +38,7 @@ export default function UploadPage() {
   const [newPwLabel, setNewPwLabel] = useState("");
   const [newPwValue, setNewPwValue] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   // SMS state
   const [smsAvailable] = useState(isSmsAvailable());
@@ -145,12 +146,17 @@ export default function UploadPage() {
   };
 
   const handleClearData = async () => {
-    await clearAllData();
-    setShowClearConfirm(false);
-    setResult(null);
-    setSyncResult(null);
-    setStmtResult(null);
-    refreshAll();
+    setClearing(true);
+    try {
+      await clearAllData();
+      setShowClearConfirm(false);
+      setResult(null);
+      setSyncResult(null);
+      setStmtResult(null);
+      refreshAll();
+    } finally {
+      setClearing(false);
+    }
   };
 
   const handleSmsSync = async () => {
@@ -196,6 +202,10 @@ export default function UploadPage() {
             <Smartphone size={18} /> SMS Sync
             <InfoTip text="Reads transaction alert SMS from your phone's inbox. Extracts amount, merchant, date, and available balance from bank messages. Most accurate and real-time source." />
           </h2>
+
+          <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+            Syncs bank SMS from the last 90 days ({new Date(Date.now() - 90 * 86400000).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → Today)
+          </p>
 
           <button onClick={handleSmsSync} disabled={smsSyncing}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, padding: "14px 16px" }}>
@@ -495,8 +505,11 @@ export default function UploadPage() {
               Permanently delete all expenses and upload history. Passwords and Gmail connection are kept.
             </p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="danger" onClick={handleClearData}>Yes, Delete</button>
-              <button className="secondary" onClick={() => setShowClearConfirm(false)}>Cancel</button>
+              <button className="danger" onClick={handleClearData} disabled={clearing}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {clearing ? <><RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} /> Deleting...</> : "Yes, Delete"}
+              </button>
+              <button className="secondary" onClick={() => setShowClearConfirm(false)} disabled={clearing}>Cancel</button>
             </div>
           </div>
         )}

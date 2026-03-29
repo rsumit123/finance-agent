@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard, Smartphone } from "lucide-react";
-import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar } from "../api/client";
+import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar, getExcludedBanks } from "../api/client";
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
@@ -62,7 +62,7 @@ function getSourceInfo(source) {
   if (!source) return { bank: null, type: "unknown", label: "Unknown" };
   const s = source.toLowerCase();
   let bank = null;
-  for (const b of ["hdfc", "axis", "scapia", "icici", "sbi", "kotak"]) {
+  for (const b of ["hdfc", "axis", "scapia", "icici", "sbi", "kotak", "karnataka", "canara", "bob", "pnb", "idfc", "yes_bank", "indusind"]) {
     if (s.includes(b)) { bank = b; break; }
   }
   if (s.startsWith("email_")) return { bank, type: "gmail", label: bank ? bank.toUpperCase() + " · Gmail" : "Gmail" };
@@ -151,8 +151,13 @@ export default function Expenses() {
       .finally(() => setLoading(false));
   };
 
+  const [excludedBanks, setExcludedBanks] = useState([]);
+
   useEffect(load, [selectedYear, selectedMonth, weekOffset, mode]);
-  useEffect(() => { getCards().then(setCards).catch(() => {}); }, []);
+  useEffect(() => {
+    getCards().then(setCards).catch(() => {});
+    getExcludedBanks().then((d) => setExcludedBanks(d.banks || [])).catch(() => {});
+  }, []);
 
   const goBack = () => {
     if (mode === "month") {
@@ -173,10 +178,14 @@ export default function Expenses() {
     setSelectedYear(now.getFullYear()); setSelectedMonth(now.getMonth() + 1); setWeekOffset(0);
   };
 
-  // Client-side filters
-  const availableBanks = [...new Set(allExpenses.map((e) => getSourceInfo(e.source).bank).filter(Boolean))];
+  // Client-side filters — exclude hidden banks first
+  const visibleExpenses = excludedBanks.length > 0
+    ? allExpenses.filter((e) => !excludedBanks.includes(getSourceInfo(e.source).bank))
+    : allExpenses;
 
-  const filtered = allExpenses.filter((e) => {
+  const availableBanks = [...new Set(visibleExpenses.map((e) => getSourceInfo(e.source).bank).filter(Boolean))];
+
+  const filtered = visibleExpenses.filter((e) => {
     if (categoryFilter && e.category !== categoryFilter) return false;
     if (bankFilter && getSourceInfo(e.source).bank !== bankFilter) return false;
     if (txnTypeFilter === "debit" && e.amount < 0) return false;

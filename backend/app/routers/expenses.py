@@ -1,5 +1,6 @@
 """Expense management endpoints."""
 
+import json
 from datetime import date, timedelta
 from typing import Optional
 
@@ -11,7 +12,7 @@ from collections import defaultdict
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import CategoryRule, Expense, User
+from ..models import CategoryRule, Expense, User, UserPreference
 from ..schemas import ExpenseCreate, ExpenseOut, ExpenseSummary, Subscription
 from ..services.subscriptions import detect_subscriptions
 from ..services.tracker import (
@@ -23,6 +24,17 @@ from ..services.tracker import (
     list_expenses,
     summarize_period,
 )
+
+
+def _get_excluded_banks(db: Session, user_id: int) -> list[str]:
+    """Get user's excluded banks list."""
+    pref = db.query(UserPreference).filter(
+        UserPreference.user_id == user_id,
+        UserPreference.key == "excluded_banks",
+    ).first()
+    if pref and pref.value:
+        return json.loads(pref.value)
+    return []
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
 
@@ -71,7 +83,29 @@ def expense_summary(
         start, end = get_current_week_range()
     else:
         start, end = get_current_month_range()
-    return summarize_period(db, start, end, user_id=current_user.id)
+    result = summarize_period(db, start, end, user_id=current_user.id)
+
+    # Filter out excluded banks from category breakdown
+    excluded = _get_excluded_banks(db, current_user.id)
+    if excluded:
+        # Re-calculate from filtered expenses
+        all_in_range = db.query(Expense).filter(
+            Expense.user_id == current_user.id,
+            Expense.date >= start, Expense.date <= end,
+        ).all()
+        filtered = [e for e in all_in_range if _source_to_bank(e.source or "").lower() not in excluded]
+        result.income = sum(abs(e.amount) for e in filtered if e.category == "salary")
+        result.expense = sum(e.amount for e in filtered if e.amount > 0 and e.category != "transfer")
+        result.total = result.expense
+        result.count = len(filtered)
+        # Recalculate category breakdown
+        cat = {}
+        for e in filtered:
+            if e.amount > 0 and e.category != "transfer":
+                cat[e.category] = cat.get(e.category, 0) + e.amount
+        result.by_category = cat
+
+    return result
 
 
 @router.get("/sources")
@@ -222,7 +256,15 @@ def get_networth(
     else:
         q = db.query(Expense).filter(Expense.user_id == current_user.id)
 
-    expenses = q.all()
+    all_expenses = q.all()
+
+    # Filter out excluded banks
+    excluded = _get_excluded_banks(db, current_user.id)
+    if excluded:
+        expenses = [e for e in all_expenses if _source_to_bank(e.source or "").lower() not in excluded]
+    else:
+        expenses = all_expenses
+
     if not expenses:
         return {"total_income": 0, "total_spent": 0, "net_cashflow": 0, "cc_outstanding": {}, "total_cc_debt": 0}
 
@@ -274,7 +316,8 @@ def get_networth(
         total_cc_debt += max(outstanding, 0)
 
     # CC outstanding is always calculated from ALL data (debt persists)
-    all_cc_expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
+    all_cc_query = db.query(Expense).filter(Expense.user_id == current_user.id).all()
+    all_cc_expenses = [e for e in all_cc_query if _source_to_bank(e.source or "").lower() not in excluded] if excluded else all_cc_query
     cc_charges_all: dict[str, float] = defaultdict(float)
     cc_payments_all: dict[str, float] = defaultdict(float)
     for e in all_cc_expenses:
@@ -330,6 +373,11 @@ def get_insights(
         .filter(Expense.user_id == current_user.id, Expense.date >= s, Expense.date <= e, Expense.amount > 0)
         .all()
     )
+
+    # Filter excluded banks
+    excluded = _get_excluded_banks(db, current_user.id)
+    if excluded:
+        expenses = [x for x in expenses if _source_to_bank(x.source or "").lower() not in excluded]
 
     # Exclude transfers from insights
     real = [x for x in expenses if x.category != "transfer"]

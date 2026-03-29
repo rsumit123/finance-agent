@@ -1,4 +1,6 @@
-"""User settings endpoints — PDF passwords, etc."""
+"""User settings endpoints — PDF passwords, excluded banks, etc."""
+
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import CategoryRule, Expense, PdfPassword, UploadHistory, User
+from ..models import CategoryRule, Expense, PdfPassword, UploadHistory, User, UserPreference
 from ..parsers.categorizer import classify_category
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -100,3 +102,37 @@ def clear_all_data(db: Session = Depends(get_db), current_user: User = Depends(g
     db.query(UploadHistory).filter(UploadHistory.user_id == current_user.id).delete()
     db.commit()
     return {"message": "All data cleared", "expenses_deleted": expense_count, "history_deleted": history_count}
+
+
+# ── Excluded Banks ──────────────────────────────────────────
+
+class ExcludedBanksIn(BaseModel):
+    banks: list[str]  # e.g. ["canara", "karnataka"]
+
+
+def _get_pref(db: Session, user_id: int, key: str) -> UserPreference | None:
+    return db.query(UserPreference).filter(
+        UserPreference.user_id == user_id,
+        UserPreference.key == key,
+    ).first()
+
+
+@router.get("/excluded-banks")
+def get_excluded_banks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Get list of banks the user wants to exclude from expense tracking."""
+    pref = _get_pref(db, current_user.id, "excluded_banks")
+    banks = json.loads(pref.value) if pref and pref.value else []
+    return {"banks": banks}
+
+
+@router.put("/excluded-banks")
+def set_excluded_banks(data: ExcludedBanksIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Set list of excluded banks."""
+    pref = _get_pref(db, current_user.id, "excluded_banks")
+    if pref:
+        pref.value = json.dumps(data.banks)
+    else:
+        pref = UserPreference(user_id=current_user.id, key="excluded_banks", value=json.dumps(data.banks))
+        db.add(pref)
+    db.commit()
+    return {"banks": data.banks}
