@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { LogOut, Shield, EyeOff, X, Plus } from "lucide-react";
+import { LogOut, Shield, EyeOff, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { getExcludedBanks, setExcludedBanks, getExpenses } from "../api/client";
+import { getExcludedBanks, setExcludedBanks, getSources } from "../api/client";
 
 export default function AccountPage() {
   const { user, logout } = useAuth();
@@ -13,20 +13,11 @@ export default function AccountPage() {
     // Load excluded banks and detect available banks from expenses
     getExcludedBanks().then((d) => setExcluded(d.banks || [])).catch(() => {});
 
-    // Get all unique banks from expenses
-    const now = new Date();
-    const start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
-    getExpenses({
-      start_date: start.toISOString().split("T")[0],
-      end_date: now.toISOString().split("T")[0],
-      limit: 5000,
-    }).then((data) => {
+    // Get all unique banks from sources endpoint (no pagination limits)
+    getSources().then((sources) => {
       const banks = new Set();
-      // API returns array of expenses directly
-      const expenses = Array.isArray(data) ? data : (data.expenses || []);
-      for (const e of expenses) {
-        const bank = extractBank(e.source);
-        if (bank) banks.add(bank);
+      for (const s of sources || []) {
+        if (s.bank) banks.add(s.bank.toLowerCase());
       }
       setAllBanks([...banks].sort());
     }).catch(() => {});
@@ -139,12 +130,3 @@ export default function AccountPage() {
   );
 }
 
-function extractBank(source) {
-  if (!source) return null;
-  const s = source.toLowerCase();
-  const banks = ["hdfc", "axis", "scapia", "icici", "sbi", "kotak", "karnataka", "canara", "bob", "pnb", "idfc", "yes_bank", "indusind"];
-  for (const b of banks) {
-    if (s.includes(b)) return b;
-  }
-  return null;
-}
