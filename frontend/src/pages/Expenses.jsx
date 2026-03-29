@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard, Smartphone } from "lucide-react";
-import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar, getExcludedBanks } from "../api/client";
+import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar, getExcludedBanks, getTransferMatches, linkTransfer, unlinkTransfer } from "../api/client";
 
 const CATEGORIES = [
   "food", "transport", "shopping", "entertainment", "bills",
@@ -25,7 +25,7 @@ const CATEGORY_META = {
   "personal care": { color: "#d946ef", icon: "💇", label: "Personal Care" },
   investment:    { color: "#059669", icon: "📈", label: "Investment" },
   emi:           { color: "#f43f5e", icon: "🏦", label: "Loan & EMI" },
-  transfer:      { color: "#64748b", icon: "↔️", label: "Transfer" },
+  transfer:      { color: "#64748b", icon: "↔️", label: "Self Transfer" },
   lent:          { color: "#f472b6", icon: "🤝", label: "Lent (Owed to me)" },
   borrowed:      { color: "#fb923c", icon: "🙏", label: "Borrowed (I owe)" },
   atm:           { color: "#a855f7", icon: "🏧", label: "ATM" },
@@ -421,15 +421,17 @@ export default function Expenses() {
         return <TransactionDetail
           expense={exp}
           cards={cards}
+          allExpenses={visibleExpenses}
           onClose={() => { setSelectedExpenseId(null); load(); }}
           onCategoryChange={(cat) => { handleCategoryChange(exp.id, cat); setAllExpenses(prev => prev.map(e => e.id === exp.id ? { ...e, category: cat } : e)); }}
           onLinkCard={() => { setSelectedExpenseId(null); setLinkingId(exp.id); }}
           onDelete={() => { handleDelete(exp.id); setSelectedExpenseId(null); }}
           onApplyToSimilar={async (expId, cat) => {
             const res = await applyCategoryToSimilar(expId, cat);
-            load(); // Reload to reflect changes
+            load();
             return res;
           }}
+          onRefresh={() => { setSelectedExpenseId(null); load(); }}
         />;
       })()}
 
@@ -510,12 +512,16 @@ function CardPaymentModal({ expense, cards, onLink, onClose }) {
   );
 }
 
-function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCard, onDelete, onApplyToSimilar }) {
+function TransactionDetail({ expense, cards, allExpenses, onClose, onCategoryChange, onLinkCard, onDelete, onApplyToSimilar, onRefresh }) {
   const [editCat, setEditCat] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showApplyAll, setShowApplyAll] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
   const [pendingCategory, setPendingCategory] = useState(null);
+  const [showTransferMatch, setShowTransferMatch] = useState(false);
+  const [transferMatches, setTransferMatches] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
   const e = expense;
   const si = getSourceInfo(e.source);
   const bankColor = si.bank ? (BANK_COLORS[si.bank] || "#6b7280") : "#6b7280";
@@ -609,8 +615,20 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
                 const meta = CATEGORY_META[c] || { color: "#6b7280", icon: "📌", label: c };
                 const isActive = e.category === c;
                 return (
-                  <button key={c} onClick={() => {
+                  <button key={c} onClick={async () => {
                     if (c !== e.category) {
+                      if (c === "transfer" && !e.linked_transaction_id) {
+                        // Show transfer match popup before applying
+                        setEditCat(false);
+                        setMatchLoading(true);
+                        setShowTransferMatch(true);
+                        try {
+                          const matches = await getTransferMatches(e.id);
+                          setTransferMatches(matches);
+                        } catch { setTransferMatches([]); }
+                        setMatchLoading(false);
+                        return;
+                      }
                       onCategoryChange(c);
                       setPendingCategory(c);
                       setShowApplyAll(true);
@@ -666,6 +684,108 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
             Updated {applyResult.updated} similar transactions to "{applyResult.category}"
           </div>
         )}
+
+        {/* Self-Transfer Match Popup */}
+        {showTransferMatch && (
+          <div style={{
+            background: "rgba(99,102,241,0.1)", border: "1px solid var(--accent)",
+            borderRadius: 10, padding: "14px", marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+              Link matching transaction?
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+              Select the opposite transaction from another bank, or skip to just mark as self transfer.
+            </p>
+            {matchLoading ? (
+              <div style={{ textAlign: "center", padding: 16, color: "var(--text-dim)", fontSize: 13 }}>Finding matches...</div>
+            ) : transferMatches.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+                {transferMatches.map((m) => {
+                  const mSi = getSourceInfo(m.source);
+                  const mDate = new Date(m.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                  return (
+                    <button key={m.id} onClick={async () => {
+                      try {
+                        await linkTransfer(e.id, m.id);
+                        setShowTransferMatch(false);
+                        if (onRefresh) onRefresh();
+                      } catch {}
+                    }} style={{
+                      padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)",
+                      background: "var(--bg-card)", display: "flex", justifyContent: "space-between",
+                      alignItems: "center", cursor: "pointer", textAlign: "left", minHeight: 0,
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: m.amount < 0 ? "var(--green)" : "var(--text)" }}>
+                          {m.amount < 0 ? "+" : ""}{"₹" + Math.abs(m.amount).toLocaleString("en-IN")}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                          {(m.description || "").substring(0, 40)} {mDate}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--bg-input)", color: "var(--text-dim)", fontWeight: 600 }}>
+                        {mSi.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: 12, color: "var(--text-dim)", fontSize: 12 }}>No matching transactions found nearby.</div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={() => {
+                onCategoryChange("transfer");
+                setShowTransferMatch(false);
+                setPendingCategory("transfer");
+                setShowApplyAll(true);
+              }} className="secondary" style={{ flex: 1, fontSize: 12, padding: "10px" }}>
+                Skip — Just Mark as Self Transfer
+              </button>
+              <button onClick={() => setShowTransferMatch(false)} className="secondary" style={{ padding: "10px 14px", fontSize: 12 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Linked Self-Transfer */}
+        {e.linked_transaction_id && (() => {
+          const linked = allExpenses?.find(x => x.id === e.linked_transaction_id);
+          const linkedSi = linked ? getSourceInfo(linked.source) : null;
+          return (
+            <div style={{
+              background: "rgba(100,116,139,0.1)", border: "1px solid rgba(100,116,139,0.3)",
+              borderRadius: 10, padding: "10px 14px", marginBottom: 12,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 4 }}>
+                  ↔️ Linked Self Transfer
+                </div>
+                {linked ? (
+                  <div style={{ fontSize: 12, marginTop: 4, color: "var(--text)" }}>
+                    {linked.amount < 0 ? "+" : ""}₹{Math.abs(linked.amount).toLocaleString("en-IN")} from {linkedSi?.label || "unknown"}
+                    {" · "}{new Date(linked.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, marginTop: 4, color: "var(--text-dim)" }}>Linked to #{e.linked_transaction_id}</div>
+                )}
+              </div>
+              <button onClick={async () => {
+                setUnlinking(true);
+                try {
+                  await unlinkTransfer(e.id);
+                  if (onRefresh) onRefresh();
+                } catch {}
+                setUnlinking(false);
+              }} disabled={unlinking} className="secondary" style={{ padding: "6px 10px", fontSize: 11, minHeight: 0 }}>
+                {unlinking ? "..." : "Unlink"}
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>

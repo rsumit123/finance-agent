@@ -152,6 +152,16 @@ export const getExcludedBanks = () =>
 export const setExcludedBanks = (banks) =>
   api.put("/api/settings/excluded-banks", { banks }).then((r) => r.data);
 
+// Self Transfer linking
+export const getTransferMatches = (expenseId) =>
+  api.get(`/api/expenses/${expenseId}/transfer-matches`).then((r) => r.data);
+
+export const linkTransfer = (expenseId, otherId) =>
+  api.post(`/api/expenses/${expenseId}/link-transfer`, null, { params: { other_id: otherId } }).then((r) => r.data);
+
+export const unlinkTransfer = (expenseId) =>
+  api.post(`/api/expenses/${expenseId}/unlink-transfer`).then((r) => r.data);
+
 // Cards
 export const getCards = () =>
   api.get("/api/cards/").then((r) => r.data);

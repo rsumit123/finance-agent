@@ -28,6 +28,8 @@ class ExpenseOut(BaseModel):
     date: datetime
     source: str
     reference_id: str
+    card_id: Optional[int] = None
+    linked_transaction_id: Optional[int] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

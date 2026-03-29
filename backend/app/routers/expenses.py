@@ -608,6 +608,108 @@ def remove_expense(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Unlink any linked transfer before deleting
+    expense = get_expense(db, expense_id, user_id=current_user.id)
+    if expense and expense.linked_transaction_id:
+        other = db.query(Expense).filter(Expense.id == expense.linked_transaction_id).first()
+        if other:
+            other.linked_transaction_id = None
+        db.commit()
+
     if not delete_expense(db, expense_id, user_id=current_user.id):
         raise HTTPException(status_code=404, detail="Expense not found")
     return {"message": "Expense deleted"}
+
+
+# ── Self Transfer Linking ──────────────────────────────────
+
+@router.get("/{expense_id}/transfer-matches", response_model=list[ExpenseOut])
+def get_transfer_matches(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Find candidate opposite transactions for self-transfer linking."""
+    expense = get_expense(db, expense_id, user_id=current_user.id)
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    from datetime import timedelta
+    target_abs = abs(expense.amount)
+    tolerance = target_abs * 0.05  # 5% tolerance
+    date_min = expense.date - timedelta(days=3)
+    date_max = expense.date + timedelta(days=3)
+
+    # Find opposite-sign transactions within date range and amount tolerance
+    q = db.query(Expense).filter(
+        Expense.user_id == current_user.id,
+        Expense.id != expense_id,
+        Expense.date >= date_min,
+        Expense.date <= date_max,
+        Expense.linked_transaction_id == None,
+    )
+
+    # Opposite sign
+    if expense.amount > 0:
+        q = q.filter(Expense.amount < 0)
+    else:
+        q = q.filter(Expense.amount > 0)
+
+    candidates = q.all()
+
+    # Filter by amount tolerance and different source
+    matches = []
+    expense_bank = _source_to_bank(expense.source or "").lower()
+    for c in candidates:
+        if abs(abs(c.amount) - target_abs) <= tolerance:
+            c_bank = _source_to_bank(c.source or "").lower()
+            if c_bank != expense_bank or not expense_bank:
+                matches.append(c)
+
+    # Sort by date proximity
+    matches.sort(key=lambda c: abs((c.date - expense.date).total_seconds()))
+    return matches[:10]
+
+
+@router.post("/{expense_id}/link-transfer")
+def link_transfer(
+    expense_id: int,
+    other_id: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Link two transactions as a self-transfer pair."""
+    expense = get_expense(db, expense_id, user_id=current_user.id)
+    other = get_expense(db, other_id, user_id=current_user.id)
+    if not expense or not other:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    if expense.linked_transaction_id or other.linked_transaction_id:
+        raise HTTPException(status_code=400, detail="One or both transactions already linked")
+
+    expense.linked_transaction_id = other.id
+    other.linked_transaction_id = expense.id
+    expense.category = "transfer"
+    other.category = "transfer"
+    db.commit()
+    db.refresh(expense)
+    db.refresh(other)
+    return {"expense": ExpenseOut.model_validate(expense), "linked": ExpenseOut.model_validate(other)}
+
+
+@router.post("/{expense_id}/unlink-transfer")
+def unlink_transfer(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unlink a self-transfer pair."""
+    expense = get_expense(db, expense_id, user_id=current_user.id)
+    if not expense or not expense.linked_transaction_id:
+        raise HTTPException(status_code=400, detail="Transaction is not linked")
+
+    other = db.query(Expense).filter(Expense.id == expense.linked_transaction_id).first()
+    expense.linked_transaction_id = None
+    if other:
+        other.linked_transaction_id = None
+    db.commit()
+    return {"message": "Unlinked"}

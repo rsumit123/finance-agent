@@ -81,6 +81,7 @@ class Expense(Base):
     source = Column(String(50), default="manual")
     reference_id = Column(String(100), default="")
     card_id = Column(Integer, nullable=True)           # links to Card for CC payment tracking
+    linked_transaction_id = Column(Integer, nullable=True)  # self-transfer pair link
     created_at = Column(DateTime, server_default=func.now())
 
 
