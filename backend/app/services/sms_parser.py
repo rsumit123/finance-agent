@@ -39,8 +39,33 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
     if not bank:
         return {"expense": None, "balance": None, "account_hint": "", "bank": "", "is_credit": False}
 
-    # Skip OTP messages
-    if re.search(r"\bOTP\b|\bone.time.password\b|\bverification.code\b", body_text, re.IGNORECASE):
+    # Skip non-transaction messages
+    skip_patterns = [
+        r"\bOTP\b",                          # OTP messages
+        r"\bone.time.password\b",
+        r"\bverification.code\b",
+        r"\bwill be auto.?debited\b",        # Future debit notifications
+        r"\bwill be charged\b",
+        r"\bupcoming.?payment\b",
+        r"\breminder\b",
+        r"\bpolicy.?no\b",                   # Insurance policy messages
+        r"\binsurance\b",
+        r"\bpremium.?due\b",
+        r"\bcredit.?limit\b",                # Credit limit info
+        r"\bavailable.?limit\b",
+        r"\blimit.?enhanced\b",
+        r"\breward.?points?\b",              # Reward point notifications
+        r"\bcashback\b.*\bearned\b",
+        r"\bEMI.?conversion\b",              # EMI conversion offers
+        r"\bpre.?approved\b",                # Pre-approved offers
+        r"\boffer\b.*\bexpir",
+        r"\bblock\b.*\bcard\b",              # Card block/unblock
+        r"\bpin\b.*\bgenerated\b",
+        r"\bstatement.?ready\b",             # Statement notifications
+        r"\bpassword\b.*\bchanged\b",
+        r"\blogin\b.*\balert\b",             # Login alerts
+    ]
+    if any(re.search(pat, body_text, re.IGNORECASE) for pat in skip_patterns):
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
 
     # Extract amount
@@ -64,6 +89,12 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
 
     # Extract description/merchant
     description = _extract_description(body_text)
+
+    # Validate description — skip if it's just a number, phone, or email
+    desc_clean = re.sub(r"[^a-zA-Z]", "", description)
+    if len(desc_clean) < 3:
+        # Description is mostly numbers/symbols — likely a bad parse
+        return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
 
     # Extract balance
     balance = _extract_balance(body_text)
