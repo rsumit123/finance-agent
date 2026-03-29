@@ -22,7 +22,9 @@ export default function AccountPage() {
       limit: 5000,
     }).then((data) => {
       const banks = new Set();
-      for (const e of data.expenses || []) {
+      // API returns array of expenses directly
+      const expenses = Array.isArray(data) ? data : (data.expenses || []);
+      for (const e of expenses) {
         const bank = extractBank(e.source);
         if (bank) banks.add(bank);
       }
