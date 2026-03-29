@@ -72,12 +72,15 @@ export default function StatementsPage() {
     try {
       const [year, month] = monthData.month.split("-");
       const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-      const data = await getExpenses({
+      const params = {
         start_date: `${monthData.month}-01`,
         end_date: `${monthData.month}-${lastDay}`,
-        source: monthData.source_filter,
         limit: 500,
-      });
+      };
+      // If source_filter available, use it; otherwise fetch all for this period
+      const sf = _groupToSourceFilter(monthData);
+      if (sf) params.source = sf;
+      const data = await getExpenses(params);
       setTransactions(data);
     } catch { setTransactions([]); }
     finally { setTxnLoading(false); }
@@ -370,4 +373,10 @@ export default function StatementsPage() {
       )}
     </div>
   );
+}
+
+function _groupToSourceFilter(group) {
+  if (group.source_filter) return group.source_filter;
+  if (group.source_type === "mixed" || !group.source_type) return "";
+  return "";
 }

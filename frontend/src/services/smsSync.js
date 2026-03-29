@@ -58,51 +58,58 @@ export async function syncSmsMessages(api, daysBack = 90) {
     }
 
     // Parse each SMS locally using transaction-sms-parser
+    // If library can't parse it, send raw to backend for custom parsing
     const parsedMessages = [];
-    let skipped = 0;
+    let libraryParsed = 0;
+    let fallbackCount = 0;
 
     for (const msg of bankMessages) {
+      const msgData = {
+        body: msg.body || "",
+        sender: msg.address || "",
+        date: msg.date ? String(msg.date) : "",
+      };
+
       try {
         const info = getTransactionInfo(msg.body || "");
 
-        // Only proceed if it's an actual transaction (has type and amount)
         if (info?.transaction?.type && info?.transaction?.amount) {
-          parsedMessages.push({
-            body: msg.body || "",
-            sender: msg.address || "",
-            date: msg.date ? String(msg.date) : "",
-            // Pre-parsed fields from transaction-sms-parser
-            parsed: {
-              type: info.transaction.type, // "debit" or "credit"
-              amount: parseFloat(info.transaction.amount.replace(/,/g, "")),
-              merchant: info.transaction.merchant || "",
-              reference_id: info.transaction.referenceNo || "",
-              account_type: info.account?.type || "", // CARD, ACCOUNT, WALLET
-              account_number: info.account?.number || "",
-              account_name: info.account?.name || "",
-              balance: info.balance?.available ? parseFloat(info.balance.available.replace(/,/g, "")) : null,
-            },
-          });
+          // Library parsed it successfully
+          msgData.parsed = {
+            type: info.transaction.type,
+            amount: parseFloat(info.transaction.amount.replace(/,/g, "")),
+            merchant: info.transaction.merchant || "",
+            reference_id: info.transaction.referenceNo || "",
+            account_type: info.account?.type || "",
+            account_number: info.account?.number || "",
+            account_name: info.account?.name || "",
+            balance: info.balance?.available ? parseFloat(info.balance.available.replace(/,/g, "")) : null,
+          };
+          libraryParsed++;
         } else {
-          skipped++;
+          fallbackCount++;
         }
       } catch {
-        skipped++;
+        fallbackCount++;
       }
+
+      // Always send — backend will try custom parser as fallback
+      parsedMessages.push(msgData);
     }
 
     if (parsedMessages.length === 0) {
-      return { imported: 0, duplicates: 0, messages_processed: 0, balances_extracted: 0, total_sms: messages.length, bank_sms: bankMessages.length, parsed: 0, skipped };
+      return { imported: 0, duplicates: 0, messages_processed: 0, balances_extracted: 0, total_sms: messages.length, bank_sms: 0, parsed: 0 };
     }
 
-    // Send to backend — now with pre-parsed data
+    // Send ALL bank SMS to backend — library-parsed ones have .parsed field,
+    // others will be parsed by backend's custom parser
     const response = await api.post("/api/sms/sync", { messages: parsedMessages });
     return {
       ...response.data,
       total_sms: messages.length,
       bank_sms: bankMessages.length,
-      parsed: parsedMessages.length,
-      skipped,
+      library_parsed: libraryParsed,
+      fallback_parsed: fallbackCount,
     };
   } catch (error) {
     console.error("SMS sync error:", error);

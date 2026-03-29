@@ -91,33 +91,34 @@ def get_sources(
         .all()
     )
 
-    # Group by (bank, account_type, source_type, month)
+    # Group by (bank, account_type, month) — merge all source types (sms, email, stmt)
     groups: dict[tuple, list] = defaultdict(list)
     for e in expenses:
         source = e.source or "unknown"
         bank = _source_to_bank(source)
-        source_type = _source_to_type(source)
         is_cc = _is_cc_source(source)
         account_type = "Credit Card" if is_cc else "Bank Account"
         month_key = e.date.strftime("%Y-%m") if e.date else "unknown"
-        groups[(bank, account_type, source_type, month_key)].append(e)
+        groups[(bank, account_type, month_key)].append(e)
 
     result = []
-    for (bank, account_type, source_type, month), txns in sorted(groups.items(), key=lambda x: x[0][3], reverse=True):
+    for (bank, account_type, month), txns in sorted(groups.items(), key=lambda x: x[0][2], reverse=True):
         amounts = [t.amount for t in txns]
         dates = [t.date for t in txns if t.date]
         debits = sum(a for a in amounts if a > 0)
         neg_total = abs(sum(a for a in amounts if a < 0))
 
-        # Get the actual source value for filtering
-        raw_source = txns[0].source if txns else ""
+        # Collect all unique source types and source values
+        source_types = list(set(_source_to_type(t.source or "") for t in txns))
+        source_values = list(set(t.source for t in txns if t.source))
 
         is_cc = account_type == "Credit Card"
         result.append({
             "bank": bank,
             "account_type": account_type,
-            "source_type": source_type,
-            "source_filter": raw_source,
+            "source_type": source_types[0] if len(source_types) == 1 else "mixed",
+            "source_types": source_types,
+            "source_filter": source_values[0] if len(source_values) == 1 else "",
             "month": month,
             "month_label": _month_label(month),
             "transaction_count": len(txns),
