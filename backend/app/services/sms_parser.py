@@ -64,6 +64,20 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
         r"\bstatement.?ready\b",             # Statement notifications
         r"\bpassword\b.*\bchanged\b",
         r"\blogin\b.*\balert\b",             # Login alerts
+        r"\bauto.?pay\b",                     # Auto pay setup
+        r"\bbiller\b",                        # Biller management
+        r"\bmandate\b",                       # Mandate notifications
+        r"\bmissed.?call\b",                  # Marketing SMS
+        r"\bparticipate\b",                   # Contest/promotion
+        r"\bwin\b.*\b(cashback|reward|voucher)", # Prize notifications
+        r"\bcongratulations\b",
+        r"\bapply\b.*\bnow\b",               # Marketing
+        r"\bupgrade\b.*\bcard\b",
+        r"\bcard.?no\b.*\bdue\b",             # Statement due
+        r"\btotal.?amount.?due\b",
+        r"\bminimum.?amount.?due\b",
+        r"\bpayment.?due\b",
+        r"\byour.+card.+no\b",               # Card number notifications
     ]
     if any(re.search(pat, body_text, re.IGNORECASE) for pat in skip_patterns):
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
@@ -119,6 +133,9 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
     is_cc = payment_method == "credit_card"
     source = f"sms_{bank}_{'cc' if is_cc else 'bank'}"
 
+    # Store original SMS in reference_id for verification (prefixed with sms:)
+    sms_ref = ref_id if ref_id else f"sms:{body_text[:150]}"
+
     expense = ExpenseCreate(
         amount=-amount if is_credit else amount,
         category=classify_category(description, source=source, user_name=user_name),
@@ -126,7 +143,7 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
         description=description[:200],
         date=txn_date,
         source=source,
-        reference_id=ref_id,
+        reference_id=sms_ref,
     )
 
     return {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard } from "lucide-react";
+import { Trash2, Search, X, ChevronLeft, ChevronRight, Plus, CreditCard, Smartphone } from "lucide-react";
 import { getExpenses, addExpense, deleteExpense, updateExpense, getCards, linkCardPayment, unlinkCardPayment, applyCategoryToSimilar } from "../api/client";
 
 const CATEGORIES = [
@@ -563,7 +563,20 @@ function TransactionDetail({ expense, cards, onClose, onCategoryChange, onLinkCa
           </div>
         </div>
 
-        {e.reference_id && (
+        {/* Original SMS message */}
+        {e.reference_id?.startsWith("sms:") && (
+          <div style={{ background: "rgba(14,165,233,0.1)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "#0ea5e9", display: "flex", alignItems: "center", gap: 4 }}>
+              <Smartphone size={12} /> Original SMS
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4, wordBreak: "break-word", lineHeight: 1.5, color: "var(--text-dim)" }}>
+              {e.reference_id.substring(4)}
+            </div>
+          </div>
+        )}
+
+        {/* Reference ID (non-SMS) */}
+        {e.reference_id && !e.reference_id.startsWith("sms:") && (
           <div style={{ background: "var(--bg-input)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Reference ID</div>
             <div style={{ fontSize: 12, fontFamily: "monospace", marginTop: 2, wordBreak: "break-all" }}>{e.reference_id}</div>
