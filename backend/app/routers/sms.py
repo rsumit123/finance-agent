@@ -7,19 +7,34 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import re
+
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import AccountBalance, User
+from ..schemas import ExpenseCreate
 from ..services.sms_parser import parse_sms
 from ..services.tracker import create_expenses_bulk_dedup
 
 router = APIRouter(prefix="/api/sms", tags=["sms"])
 
 
+class ParsedInfo(BaseModel):
+    type: str = ""  # debit or credit
+    amount: float = 0
+    merchant: str = ""
+    reference_id: str = ""
+    account_type: str = ""
+    account_number: str = ""
+    account_name: str = ""
+    balance: Optional[float] = None
+
+
 class SmsMessage(BaseModel):
     body: str
     sender: str = ""
-    date: str = ""  # ISO string or timestamp
+    date: str = ""
+    parsed: Optional[ParsedInfo] = None  # Pre-parsed by frontend library
 
 
 class SmsSyncRequest(BaseModel):
@@ -32,7 +47,7 @@ def sync_sms(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Parse bank SMS messages and import transactions."""
+    """Import SMS transactions. Accepts pre-parsed data from frontend."""
     from ..parsers.categorizer import classify_category
 
     parsed_expenses = []
@@ -40,21 +55,67 @@ def sync_sms(
     skipped = 0
 
     for msg in request.messages:
-        result = parse_sms(msg.body, msg.sender, msg.date, user_name=current_user.name or "")
+        if msg.parsed and msg.parsed.amount > 0:
+            # Use pre-parsed data from transaction-sms-parser (frontend)
+            is_credit = msg.parsed.type == "credit"
+            amount = msg.parsed.amount
 
-        if result["expense"]:
-            parsed_expenses.append(result["expense"])
+            # Determine bank from sender
+            bank = _detect_bank_from_sender(msg.sender)
 
-        if result["balance"] is not None:
-            balances_extracted.append({
-                "bank": result["bank"],
-                "account_hint": result["account_hint"],
-                "balance": result["balance"],
-                "date": result["expense"].date if result["expense"] else datetime.now(),
-            })
+            # Determine payment method
+            acct_type = msg.parsed.account_type.upper()
+            if acct_type == "CARD":
+                payment_method = "credit_card"
+            elif acct_type == "WALLET":
+                payment_method = "upi"
+            else:
+                payment_method = "debit_card"
 
-        if not result["expense"] and result["balance"] is None:
-            skipped += 1
+            # Build source tag
+            is_cc = acct_type == "CARD"
+            source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
+
+            # Parse date
+            txn_date = _parse_sms_date(msg.date) or datetime.now()
+
+            # Store original SMS in reference_id
+            ref = msg.parsed.reference_id if msg.parsed.reference_id else f"sms:{msg.body[:150]}"
+
+            description = msg.parsed.merchant or msg.parsed.account_name or "Bank Transaction"
+
+            expense = ExpenseCreate(
+                amount=-amount if is_credit else amount,
+                category=classify_category(description, source=source, user_name=current_user.name or ""),
+                payment_method=payment_method,
+                description=description[:200],
+                date=txn_date,
+                source=source,
+                reference_id=ref,
+            )
+            parsed_expenses.append(expense)
+
+            if msg.parsed.balance is not None:
+                balances_extracted.append({
+                    "bank": bank or "unknown",
+                    "account_hint": msg.parsed.account_number or "",
+                    "balance": msg.parsed.balance,
+                    "date": txn_date,
+                })
+        else:
+            # Fallback: use backend parser
+            result = parse_sms(msg.body, msg.sender, msg.date, user_name=current_user.name or "")
+            if result["expense"]:
+                parsed_expenses.append(result["expense"])
+            if result["balance"] is not None:
+                balances_extracted.append({
+                    "bank": result["bank"],
+                    "account_hint": result["account_hint"],
+                    "balance": result["balance"],
+                    "date": result["expense"].date if result["expense"] else datetime.now(),
+                })
+            if not result["expense"] and result["balance"] is None:
+                skipped += 1
 
     # Dedup and save transactions
     imported_count = 0
@@ -144,3 +205,32 @@ def get_balances(
         "accounts": accounts,
         "total_balance": round(total_balance, 2),
     }
+
+
+def _detect_bank_from_sender(sender: str) -> str:
+    s = (sender or "").upper()
+    bank_map = {
+        "hdfc": ["HDFC"], "axis": ["AXIS"], "sbi": ["SBI"],
+        "kotak": ["KOTAK"], "scapia": ["SCAPIA", "FEDBK", "FED"],
+        "icici": ["ICICI"], "bob": ["BOB", "BARODA"], "idfc": ["IDFC"],
+        "yes_bank": ["YESBK"], "indusind": ["INDUS"],
+        "citi": ["CITI"], "hsbc": ["HSBC"],
+    }
+    for bank, patterns in bank_map.items():
+        if any(p in s for p in patterns):
+            return bank
+    return ""
+
+
+def _parse_sms_date(date_str: str):
+    if not date_str:
+        return None
+    try:
+        return datetime.fromtimestamp(int(date_str) / 1000)
+    except (ValueError, TypeError, OSError):
+        pass
+    try:
+        return datetime.fromisoformat(date_str.replace("Z", ""))
+    except ValueError:
+        pass
+    return None
