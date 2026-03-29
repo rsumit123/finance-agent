@@ -99,8 +99,10 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
 
     # Detect credit vs debit
-    is_credit = bool(re.search(r"\bcredited\b|\breceived\b|\bcredit\b|\brefund\b", body_text, re.IGNORECASE))
-    is_debit = bool(re.search(r"\bdebited\b|\bspent\b|\bdebit\b|\bpurchase\b|\bpaid\b|\bwithdraw", body_text, re.IGNORECASE))
+    # Remove "credit card" phrases first to avoid false credit detection
+    body_no_cc = re.sub(r"\bcredit\s*card\b", "", body_text, flags=re.IGNORECASE)
+    is_credit = bool(re.search(r"\bcredited\b|\breceived\b|\bcredit\b|\brefund\b", body_no_cc, re.IGNORECASE))
+    is_debit = bool(re.search(r"\bdebited\b|\bspent\b|\bdebit\b|\bpurchase\b|\bpaid\b|\bwithdraw|\byour txn\b", body_text, re.IGNORECASE))
 
     if not is_debit and not is_credit:
         # Can't determine type, skip
@@ -189,6 +191,8 @@ def _detect_bank_from_sender(sender: str) -> str:
         "idfc": ["IDFCFB"],
         "yes_bank": ["YESBK"],
         "indusind": ["IDBIBK"],
+        "karnataka": ["KBLBNK"],
+        "canara": ["CANBNK"],
     }
     for bank, senders in bank_map.items():
         if any(sid in s for sid in senders):

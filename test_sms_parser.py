@@ -17,6 +17,65 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
 from app.services.sms_parser import parse_sms
 
+# Inline the skip logic to avoid importing the router (which needs jwt, sqlalchemy, etc.)
+import re
+
+class _FakeParsed:
+    def __init__(self, d):
+        self.type = d.get("type", "")
+        self.amount = d.get("amount", 0)
+        self.merchant = d.get("merchant", "")
+        self.reference_id = d.get("reference_id", "")
+        self.account_type = d.get("account_type", "")
+        self.account_number = d.get("account_number", "")
+        self.account_name = d.get("account_name", "")
+        self.balance = d.get("balance")
+
+class _FakeMsg:
+    def __init__(self, body, sender, date, parsed):
+        self.body = body
+        self.sender = sender
+        self.date = date
+        self.parsed = _FakeParsed(parsed) if parsed else None
+
+def _should_skip_library_parsed(msg):
+    body = (msg.body or "").lower()
+    sender = (msg.sender or "").upper()
+    skip_patterns = [
+        r"\bwill be auto.?debited\b",
+        r"\bauto debit\b.*\bunsuccessful\b",
+        r"\brenewal premium\b.*\bis due\b",
+        r"\bpayment of\b.*\bis due on\b",
+        r"\bdue on\b.*\bminimum amount\b",
+        r"\bupcoming mandate\b",
+        r"\bfor the upcoming mandate\b",
+        r"\bmandate\b.*\bcreated\b",
+        r"\bmandate\b.*\brevoke\b",
+        r"\bfund your\b",
+        r"\bclaim\b.*\bcashback\b",
+        r"\bcashback\b.*\bon\b.*\bspends\b",
+        r"\bexpir\w*\b.*\brecharge\b",
+        r"\brecharge\b.*\bexpir\w*\b",
+        r"\bplan\b.*\bexpir\w*\b",
+        r"\bwe have received a payment\b",
+        r"\bpayment is updated\b",
+        r"\bpayment received of\b",
+        r"\bpolicy\b.*\bpremium\b",
+        r"\bpremium\b.*\bpolicy\b",
+        r"\bkotak life\b",
+    ]
+    if any(re.search(pat, body) for pat in skip_patterns):
+        return True
+    non_bank_senders = [
+        "AIRTEL", "AIRBIL", "BSNLED", "JUSPAY", "BILLBK",
+        "CREDIN", "JIOPAY", "JIOINF", "ARTLTV",
+    ]
+    if any(s in sender for s in non_bank_senders):
+        return True
+    if re.search(r"\bspent\s+USD\b", msg.body or "", re.IGNORECASE):
+        return True
+    return False
+
 
 def test_file(path, show_imported=True, show_skipped=True, verbose=False):
     with open(path) as f:
@@ -34,6 +93,18 @@ def test_file(path, show_imported=True, show_skipped=True, verbose=False):
 
         # Check if frontend library already parsed it
         if pre_parsed and pre_parsed.get("amount", 0) > 0:
+            # Test the skip validation
+            sms_msg = _FakeMsg(body=body, sender=sender, date=date, parsed=pre_parsed)
+            if _should_skip_library_parsed(sms_msg):
+                skipped.append({
+                    "index": i,
+                    "sender": sender,
+                    "body": body if verbose else body[:120],
+                    "bank": "",
+                    "reason": "library-skip-filter",
+                })
+                continue
+
             library_parsed.append({
                 "index": i,
                 "sender": sender,

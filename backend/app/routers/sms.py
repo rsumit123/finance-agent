@@ -69,6 +69,11 @@ def sync_sms(
 
     for msg in request.messages:
         if msg.parsed and msg.parsed.amount > 0:
+            # Validate library-parsed data — skip false positives
+            if _should_skip_library_parsed(msg):
+                skipped += 1
+                continue
+
             # Use pre-parsed data from transaction-sms-parser (frontend)
             is_credit = msg.parsed.type == "credit"
             amount = msg.parsed.amount
@@ -95,7 +100,10 @@ def sync_sms(
             # Store original SMS in reference_id
             ref = msg.parsed.reference_id if msg.parsed.reference_id else f"sms:{msg.body[:150]}"
 
-            description = msg.parsed.merchant or msg.parsed.account_name or "Bank Transaction"
+            description = msg.parsed.merchant or msg.parsed.account_name or ""
+            # If library didn't extract merchant, try to extract from SMS body
+            if not description or description == "Bank Transaction":
+                description = _extract_merchant_from_body(msg.body) or "Bank Transaction"
 
             expense = ExpenseCreate(
                 amount=-amount if is_credit else amount,
@@ -280,6 +288,104 @@ def get_balances(
     }
 
 
+def _should_skip_library_parsed(msg: SmsMessage) -> bool:
+    """Validate library-parsed SMS — reject false positives the library picks up."""
+    body = (msg.body or "").lower()
+    sender = (msg.sender or "").upper()
+
+    # Skip patterns: messages that contain amounts but are NOT actual transactions
+    skip_patterns = [
+        r"\bwill be auto.?debited\b",          # Future auto-debit notifications
+        r"\bauto debit\b.*\bunsuccessful\b",    # Failed auto-debit
+        r"\brenewal premium\b.*\bis due\b",     # Insurance premium due
+        r"\bpayment of\b.*\bis due on\b",       # CC statement due
+        r"\bdue on\b.*\bminimum amount\b",      # CC minimum due
+        r"\bupcoming mandate\b",                # Mandate notifications
+        r"\bfor the upcoming mandate\b",
+        r"\bmandate\b.*\bcreated\b",            # Mandate created
+        r"\bmandate\b.*\brevoke\b",             # Mandate revoked
+        r"\bfund your\b",                       # Promotional (fund your account)
+        r"\bclaim\b.*\bcashback\b",             # Cashback promo
+        r"\bcashback\b.*\bon\b.*\bspends\b",    # Cashback on spends promo
+        r"\bexpir\w*\b.*\brecharge\b",          # Airtel/Jio expiry + recharge
+        r"\brecharge\b.*\bexpir\w*\b",
+        r"\bplan\b.*\bexpir\w*\b",             # Plan expiry
+        r"\bwe have received a payment\b",      # Payment receipt (not a spend)
+        r"\bpayment is updated\b",              # Payment receipt
+        r"\bpayment received of\b",             # Payment receipt
+        r"\bpolicy\b.*\bpremium\b",             # Insurance
+        r"\bpremium\b.*\bpolicy\b",
+        r"\bkotak life\b",                      # Kotak Life insurance
+        r"\bvouchers?\s+added\b",               # Voucher promos
+        r"\bupto\s+rs\b.*\bvoucher",            # "Upto Rs.3550 Vouchers"
+        r"\btransaction\s+reversed\b",           # Reversal notification (not a new txn)
+        r"\bhas been received towards your\b.*\bcredit card\b",  # CC payment confirmation (dupes bank debit)
+        r"\bsuccessfully credited towards your\b.*\bcredit card\b",  # Same
+        r"\bbill\b.*\baccount\b.*\btel\b",      # BSNL landline bill notification
+        r"\bincoming facility\b.*\bbarred\b",    # BSNL service barred
+    ]
+    if any(re.search(pat, body) for pat in skip_patterns):
+        return True
+
+    # Skip non-bank senders that TRAI suffix caught
+    non_bank_senders = [
+        "AIRTEL", "AIRBIL", "BSNLED", "JUSPAY", "BILLBK",
+        "CREDIN", "JIOPAY", "JIOINF", "ARTLTV",
+    ]
+    if any(s in sender for s in non_bank_senders):
+        return True
+
+    # Skip USD transactions where library parsed the INR available limit instead
+    if re.search(r"\bspent\s+USD\b", msg.body or "", re.IGNORECASE):
+        return True
+
+    return False
+
+
+def _extract_merchant_from_body(body: str) -> str:
+    """Extract merchant/description from SMS body when library didn't."""
+    if not body:
+        return ""
+    text = body.strip()
+
+    patterns = [
+        # "Spent INR 299\nAxis Bank Card no. XX1088\n29-03-26...\nYOUTUBEGOOG\n"
+        # Merchant is the line after the date line in Axis "Spent" format
+        r"Spent (?:INR|Rs\.?)\s*[\d,.]+\n.*Card.*XX\d{4}\n[\d-]+\s[\d:]+\s\w+\n(.+?)(?:\n|$)",
+        # "Spent Rs.245 On HDFC Bank Card 8705 At ASSPL On 2026-"
+        r"Spent Rs\.?[\d,.]+ (?:On|From) \w+ Bank Card \w+ At (.+?) On \d{4}",
+        # "debited towards Google for INR 399.00"
+        r"debited towards (.+?) for (?:INR|Rs)",
+        # "INR 587.50 spent using ICICI Bank Card XX9009 on ... on BOOK MY SHOW"
+        r"spent using .+? Card .+? on .+? on (.+?)(?:\.|,|\s+Avl)",
+        # "A/c no. XX9570\n20-03-26...\nUPI/P2A/.../AJAY  GOPE"
+        r"UPI/P2[AM]/\d+/(.+?)(?:\n|$)",
+        # "Debit INR ...\nAxis Bank A/c XX9570\n...\nNBSM/.../BHARAT SANC"
+        r"NBSM/\d+/(.+?)(?:\n|$)",
+        # "trf to BINOD PANDIT" (Karnataka Bank)
+        r"trf to (.+?)(?:\.|,|UPI:|\n|$)",
+        # "Received Rs... from user@vpa"
+        r"(?:Received|credited).*from\s+(\S+@\S+)\s",
+        # "credited by Rs.60000 from SUMIT KUMAR on" (Karnataka Bank)
+        r"credited by .+? from (.+?) on \d",
+        # "credited.*Info APBS*HPCL LPG"
+        r"credited.*Info\s+(.+?)(?:\.|$)",
+        # "CreditCard Payment XX" (CC bill payment)
+        r"(CreditCard Payment .+?)(?:\n|$)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            desc = m.group(1).strip()
+            # Clean up
+            desc = re.sub(r"\s+", " ", desc).strip()
+            # Remove trailing "Not you?" etc
+            desc = re.sub(r"\s*Not you\?.*$", "", desc, flags=re.IGNORECASE)
+            if len(desc) >= 3:
+                return desc
+    return ""
+
+
 def _detect_bank_from_sender(sender: str) -> str:
     s = (sender or "").upper()
     bank_map = {
@@ -288,6 +394,8 @@ def _detect_bank_from_sender(sender: str) -> str:
         "icici": ["ICICI"], "bob": ["BOB", "BARODA"], "idfc": ["IDFC"],
         "yes_bank": ["YESBK"], "indusind": ["INDUS"],
         "citi": ["CITI"], "hsbc": ["HSBC"],
+        "karnataka": ["KBLBNK"],
+        "canara": ["CANBNK"],
     }
     for bank, patterns in bank_map.items():
         if any(p in s for p in patterns):
