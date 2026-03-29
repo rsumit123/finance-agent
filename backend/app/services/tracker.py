@@ -226,21 +226,20 @@ def summarize_period(db: Session, start_date: date, end_date: date, user_id: int
     count = q_count.scalar()
 
     # Split income vs expenses
-    # Transfers (category="transfer") are excluded from both income and expense
-    # CC credits (payments, refunds) are NOT income
+    # Transfers, lent, borrowed are excluded from spending
+    EXCLUDED_SPEND = {"transfer", "lent", "borrowed"}
     q_all = db.query(Expense).filter(Expense.date >= start_date, Expense.date <= end_date)
     if user_id is not None:
         q_all = q_all.filter(Expense.user_id == user_id)
     all_in_range = q_all.all()
     # Income = salary category only (actual earnings)
-    # Refunds, CC credits, transfers are NOT income
     income_amt = sum(abs(e.amount) for e in all_in_range if e.category == "salary")
 
-    # Expense = positive amounts, excluding transfers
-    expense_amt = sum(e.amount for e in all_in_range if e.amount > 0 and e.category != "transfer")
+    # Expense = positive amounts, excluding transfers/loans
+    expense_amt = sum(e.amount for e in all_in_range if e.amount > 0 and e.category not in EXCLUDED_SPEND)
 
-    # Transfers = both sides of self-transfers
-    transfer_amt = sum(abs(e.amount) for e in all_in_range if e.category == "transfer")
+    # Transfers = both sides of self-transfers + loans
+    transfer_amt = sum(abs(e.amount) for e in all_in_range if e.category in EXCLUDED_SPEND)
 
     income = income_amt
     expense = expense_amt

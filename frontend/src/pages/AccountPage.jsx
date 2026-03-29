@@ -69,10 +69,10 @@ export default function AccountPage() {
       {allBanks.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
           <h2 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <EyeOff size={18} /> Hidden Banks
+            <EyeOff size={18} /> Hide Banks
           </h2>
           <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
-            Transactions from hidden banks won't appear in expenses, dashboard, or net worth calculations.
+            Tap a bank to exclude it. Hidden banks won't count in expenses, dashboard, or net worth.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {allBanks.map((bank) => {
@@ -107,7 +107,7 @@ export default function AccountPage() {
           </div>
           {excluded.length > 0 && (
             <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 10 }}>
-              Tap a hidden bank to show it again.
+              Tap again to unhide.
             </p>
           )}
         </div>

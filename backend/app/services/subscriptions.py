@@ -119,7 +119,7 @@ def detect_subscriptions(db: Session, user_id: int) -> list[Subscription]:
                 amount=round(avg_amount, 2),
                 frequency="monthly",
                 last_charged=last_txn.date,
-                next_expected=next_expected if next_expected > date.today() else None,
+                next_expected=next_expected if (next_expected.date() if hasattr(next_expected, 'date') else next_expected) > date.today() else None,
                 total_spent=round(total_spent, 2),
                 occurrence_count=len(txns),
             )

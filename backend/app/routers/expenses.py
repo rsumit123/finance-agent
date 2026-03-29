@@ -36,6 +36,9 @@ def _get_excluded_banks(db: Session, user_id: int) -> list[str]:
         return json.loads(pref.value)
     return []
 
+# Categories excluded from spending calculations (not real expenses)
+EXCLUDED_SPEND_CATEGORIES = {"transfer", "lent", "borrowed"}
+
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
 
 
@@ -95,13 +98,13 @@ def expense_summary(
         ).all()
         filtered = [e for e in all_in_range if _source_to_bank(e.source or "").lower() not in excluded]
         result.income = sum(abs(e.amount) for e in filtered if e.category == "salary")
-        result.expense = sum(e.amount for e in filtered if e.amount > 0 and e.category != "transfer")
+        result.expense = sum(e.amount for e in filtered if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES)
         result.total = result.expense
         result.count = len(filtered)
         # Recalculate category breakdown
         cat = {}
         for e in filtered:
-            if e.amount > 0 and e.category != "transfer":
+            if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES:
                 cat[e.category] = cat.get(e.category, 0) + e.amount
         result.by_category = cat
 
@@ -279,7 +282,7 @@ def get_networth(
     for e in expenses:
         is_cc = _is_cc_source(e.source or "")
         bank = _source_to_bank(e.source or "")
-        is_transfer = (e.category == "transfer")
+        is_transfer = (e.category in EXCLUDED_SPEND_CATEGORIES)
 
         # Income = salary only
         if e.category == "salary":
@@ -434,7 +437,7 @@ def get_insights(
     prev_e = s - timedelta(days=1)
     prev_total = float(
         db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.user_id == current_user.id, Expense.date >= prev_s, Expense.date <= prev_e, Expense.amount > 0, Expense.category != "transfer")
+        .filter(Expense.user_id == current_user.id, Expense.date >= prev_s, Expense.date <= prev_e, Expense.amount > 0, Expense.category not in EXCLUDED_SPEND_CATEGORIES)
         .scalar()
     )
     current_total = sum(x.amount for x in real)
