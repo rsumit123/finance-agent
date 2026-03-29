@@ -135,19 +135,22 @@ def get_sources(
 
 
 def _source_to_bank(source: str) -> str:
-    if "hdfc" in source:
+    s = source.lower()
+    if "hdfc" in s:
         return "HDFC"
-    if "axis" in source:
+    if "axis" in s:
         return "Axis"
-    if "scapia" in source:
+    if "scapia" in s:
         return "Scapia"
-    if "icici" in source:
+    if "icici" in s:
         return "ICICI"
-    if "sbi" in source:
+    if "sbi" in s:
         return "SBI"
-    if source.startswith("stmt_"):
-        name = source.replace("stmt_", "")
-        # Remove _cc or _bank suffix
+    if "kotak" in s:
+        return "Kotak"
+    if s.startswith("stmt_") or s.startswith("sms_"):
+        prefix = "stmt_" if s.startswith("stmt_") else "sms_"
+        name = s.replace(prefix, "")
         for suffix in ("_cc", "_bank"):
             if name.endswith(suffix):
                 name = name[:-len(suffix)]
