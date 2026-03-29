@@ -78,6 +78,17 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
         r"\bminimum.?amount.?due\b",
         r"\bpayment.?due\b",
         r"\byour.+card.+no\b",               # Card number notifications
+        r"\bincorrect.?pin\b",                # PIN errors
+        r"\bblocked\b",
+        r"\bvoucher\b",                       # Voucher/cashback promo
+        r"\bcashback\b",
+        r"\bamazon.?voucher\b",
+        r"\bpayzapp\b.*\bbill.?pay\b",        # PayZapp bill pay notifications
+        r"\bvia\s+PayZapp\b",
+        r"https?://",                          # Messages with URLs are usually promos
+        r"\bT&C\b",                            # Terms & conditions = promo
+        r"\bcredit.?card.?XX\d{4}\b",          # "your Axis Bank Credit Card XX1088" — statement notif
+        r"\bA/c\s+no\b",                       # Account number notification
     ]
     if any(re.search(pat, body_text, re.IGNORECASE) for pat in skip_patterns):
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
@@ -104,10 +115,18 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
     # Extract description/merchant
     description = _extract_description(body_text)
 
-    # Validate description — skip if it's just a number, phone, or email
+    # Validate description — skip bad parses
     desc_clean = re.sub(r"[^a-zA-Z]", "", description)
     if len(desc_clean) < 3:
-        # Description is mostly numbers/symbols — likely a bad parse
+        return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
+    # Skip if description is just "Bank Transaction" (generic, useless)
+    if description.strip().lower() == "bank transaction":
+        return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
+    # Skip if description is an email or UPI ID
+    if re.match(r"^[\w.*]+@[\w.]+$", description.strip()):
+        return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
+    # Skip if description starts with a date (bad parse)
+    if re.match(r"^\d{2}/\w{3}/\d{4}", description.strip()):
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
 
     # Extract balance
@@ -212,17 +231,28 @@ def _extract_balance(text: str) -> Optional[float]:
 def _extract_date(text: str) -> Optional[datetime]:
     """Extract transaction date from SMS."""
     patterns = [
-        (r"(\d{2}-\d{2}-\d{2,4})", ["%d-%m-%y", "%d-%m-%Y"]),
-        (r"(\d{2}/\d{2}/\d{2,4})", ["%d/%m/%y", "%d/%m/%Y"]),
-        (r"(\d{2}\w{3}\d{2,4})", ["%d%b%y", "%d%b%Y"]),
-        (r"(\d{2}\s\w{3}\s\d{2,4})", ["%d %b %y", "%d %b %Y"]),
+        (r"(\d{2}-\d{2}-\d{4})", ["%d-%m-%Y"]),
+        (r"(\d{2}/\d{2}/\d{4})", ["%d/%m/%Y"]),
+        (r"(\d{2}-\d{2}-\d{2})\b", ["%d-%m-%y"]),
+        (r"(\d{2}/\d{2}/\d{2})\b", ["%d/%m/%y"]),
+        (r"(\d{2}\w{3}\d{4})", ["%d%b%Y"]),
+        (r"(\d{2}\w{3}\d{2})\b", ["%d%b%y"]),
+        (r"(\d{2}\s\w{3}\s\d{4})", ["%d %b %Y"]),
+        (r"(\d{2}\s\w{3}\s\d{2})\b", ["%d %b %y"]),
     ]
     for pattern, fmts in patterns:
         m = re.search(pattern, text)
         if m:
             for fmt in fmts:
                 try:
-                    return datetime.strptime(m.group(1), fmt)
+                    dt = datetime.strptime(m.group(1), fmt)
+                    # Fix 2-digit year: ensure it's 2000+
+                    if dt.year < 100:
+                        dt = dt.replace(year=dt.year + 2000)
+                    # Sanity check: date should be between 2020 and 2030
+                    if dt.year < 2020 or dt.year > 2030:
+                        continue
+                    return dt
                 except ValueError:
                     continue
     return None
