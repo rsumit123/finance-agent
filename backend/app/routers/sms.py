@@ -1,5 +1,7 @@
 """SMS sync endpoint — accepts bank SMS messages from mobile app."""
 
+import json
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -15,6 +17,9 @@ from ..models import AccountBalance, User
 from ..schemas import ExpenseCreate
 from ..services.sms_parser import parse_sms
 from ..services.tracker import create_expenses_bulk_dedup
+
+SMS_DUMP_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+os.makedirs(SMS_DUMP_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/api/sms", tags=["sms"])
 
@@ -49,6 +54,14 @@ def sync_sms(
 ):
     """Import SMS transactions. Accepts pre-parsed data from frontend."""
     from ..parsers.categorizer import classify_category
+
+    # Dump raw incoming SMS for debugging
+    try:
+        dump_path = os.path.join(SMS_DUMP_DIR, f"sms_dump_{current_user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        with open(dump_path, "w") as f:
+            json.dump([m.model_dump() for m in request.messages], f, indent=2, default=str)
+    except Exception as e:
+        print(f"SMS dump error: {e}")
 
     parsed_expenses = []
     balances_extracted = []
@@ -158,6 +171,66 @@ def sync_sms(
         "skipped": skipped,
         "messages_processed": len(request.messages),
         "balances_extracted": balances_saved,
+    }
+
+
+@router.post("/test-parse")
+def test_parse_sms(
+    request: SmsSyncRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Dry-run: show what the parser would do with each SMS. No DB writes."""
+    from ..parsers.categorizer import classify_category
+
+    results = []
+    for msg in request.messages:
+        entry = {
+            "sender": msg.sender,
+            "body": msg.body[:200],
+            "date": msg.date,
+        }
+
+        # Check frontend library parse
+        if msg.parsed and msg.parsed.amount > 0:
+            bank = _detect_bank_from_sender(msg.sender)
+            entry["source"] = "library"
+            entry["action"] = "import"
+            entry["parsed"] = {
+                "type": msg.parsed.type,
+                "amount": msg.parsed.amount,
+                "merchant": msg.parsed.merchant,
+                "bank": bank,
+                "account_type": msg.parsed.account_type,
+                "balance": msg.parsed.balance,
+            }
+        else:
+            # Try backend parser
+            result = parse_sms(msg.body, msg.sender, msg.date, user_name=current_user.name or "")
+            if result["expense"]:
+                entry["source"] = "backend"
+                entry["action"] = "import"
+                entry["parsed"] = {
+                    "type": "credit" if result["is_credit"] else "debit",
+                    "amount": abs(result["expense"].amount),
+                    "merchant": result["expense"].description,
+                    "bank": result["bank"],
+                    "category": result["expense"].category,
+                    "balance": result["balance"],
+                }
+            else:
+                entry["source"] = "none"
+                entry["action"] = "skip"
+                entry["reason"] = "no parser matched"
+
+        results.append(entry)
+
+    imported = [r for r in results if r["action"] == "import"]
+    skipped = [r for r in results if r["action"] == "skip"]
+    return {
+        "total": len(results),
+        "would_import": len(imported),
+        "would_skip": len(skipped),
+        "results": results,
     }
 
 
