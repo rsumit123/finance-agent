@@ -629,6 +629,149 @@ TOOL_EXECUTORS = {
 }
 
 
+# ── OpenRouter (OpenAI-compatible) provider ───────────────────
+
+def _convert_tools_to_openai_format():
+    """Convert Anthropic tool format to OpenAI function-calling format."""
+    return [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in TOOLS]
+
+
+def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk_queue, db, user_id: int):
+    """Run chat via OpenRouter (OpenAI-compatible API) with tool use."""
+    import httpx
+
+    openai_tools = _convert_tools_to_openai_format()
+    openai_messages = [{"role": "system", "content": system}] + messages
+
+    try:
+        max_iterations = 8
+        for _ in range(max_iterations):
+            # Non-streaming call for tool use support
+            resp = httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": openai_messages, "tools": openai_tools, "max_tokens": 2048, "stream": False},
+                timeout=60,
+            )
+            if resp.status_code != 200:
+                chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'OpenRouter error: {resp.status_code} {resp.text[:200]}'})}\n\n")
+                break
+
+            data = resp.json()
+            choice = data.get("choices", [{}])[0]
+            msg = choice.get("message", {})
+            finish = choice.get("finish_reason", "stop")
+
+            # Stream the text content
+            if msg.get("content"):
+                # Send word by word for streaming feel
+                words = msg["content"].split(" ")
+                for i, word in enumerate(words):
+                    chunk = word if i == 0 else " " + word
+                    chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n")
+
+            # Handle tool calls
+            tool_calls = msg.get("tool_calls", [])
+            if tool_calls and finish == "tool_calls":
+                openai_messages.append(msg)
+
+                for tc in tool_calls:
+                    fn = tc.get("function", {})
+                    tool_name = fn.get("name", "")
+                    try:
+                        tool_input = json.loads(fn.get("arguments", "{}"))
+                    except json.JSONDecodeError:
+                        tool_input = {}
+
+                    chunk_queue.put(f"data: {json.dumps({'type': 'tool_use', 'name': tool_name})}\n\n")
+
+                    executor = TOOL_EXECUTORS.get(tool_name)
+                    result = executor(db, user_id, tool_input) if executor else json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+                    openai_messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                continue
+            else:
+                break
+
+    except Exception as e:
+        chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
+    finally:
+        chunk_queue.put(None)
+
+
+# ── Anthropic provider ────────────────────────────────────────
+
+def _run_anthropic(api_key: str, model: str, system: str, messages: list, chunk_queue, db, user_id: int):
+    """Run chat via Anthropic API with streaming + tool use."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    try:
+        max_iterations = 8
+        for _ in range(max_iterations):
+            collected_text = ""
+            tool_uses = []
+            stop_reason = None
+
+            with client.messages.stream(
+                model=model, max_tokens=2048, system=system,
+                messages=messages, tools=TOOLS,
+            ) as stream:
+                for event in stream:
+                    if event.type == "content_block_start":
+                        if hasattr(event.content_block, "type") and event.content_block.type == "tool_use":
+                            tool_uses.append({"id": event.content_block.id, "name": event.content_block.name, "input_json": ""})
+                            chunk_queue.put(f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name})}\n\n")
+                    elif event.type == "content_block_delta":
+                        if hasattr(event.delta, "text"):
+                            collected_text += event.delta.text
+                            chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n")
+                        elif hasattr(event.delta, "partial_json") and tool_uses:
+                            tool_uses[-1]["input_json"] += event.delta.partial_json
+
+                final_message = stream.get_final_message()
+                stop_reason = final_message.stop_reason
+
+            if stop_reason == "tool_use" and tool_uses:
+                assistant_content = []
+                if collected_text:
+                    assistant_content.append({"type": "text", "text": collected_text})
+                for tu in tool_uses:
+                    try:
+                        tool_input = json.loads(tu["input_json"]) if tu["input_json"] else {}
+                    except json.JSONDecodeError:
+                        tool_input = {}
+                    assistant_content.append({"type": "tool_use", "id": tu["id"], "name": tu["name"], "input": tool_input})
+
+                messages.append({"role": "assistant", "content": assistant_content})
+
+                tool_results = []
+                for tu in tool_uses:
+                    try:
+                        tool_input = json.loads(tu["input_json"]) if tu["input_json"] else {}
+                    except json.JSONDecodeError:
+                        tool_input = {}
+                    executor = TOOL_EXECUTORS.get(tu["name"])
+                    result = executor(db, user_id, tool_input) if executor else json.dumps({"error": f"Unknown tool: {tu['name']}"})
+                    tool_results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": result})
+
+                messages.append({"role": "user", "content": tool_results})
+                continue
+            else:
+                break
+
+    except anthropic.APIError as e:
+        error_msg = str(e).lower()
+        if "credit" in error_msg or "balance" in error_msg or "billing" in error_msg:
+            # Credit exhausted — signal fallback
+            chunk_queue.put("__FALLBACK__")
+            return
+        chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'API error: {str(e)}'})}\n\n")
+    except Exception as e:
+        chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
+    finally:
+        chunk_queue.put(None)
+
+
 @router.post("")
 async def chat(
     req: ChatRequest,
@@ -636,14 +779,17 @@ async def chat(
     current_user: User = Depends(get_current_user),
 ):
     """Chat with the LLM finance assistant. Returns SSE stream."""
-    api_key = os.getenv("LLM_API_KEY", "")
-    if not api_key:
+    anthropic_key = os.getenv("LLM_API_KEY", "")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    provider = os.getenv("LLM_PROVIDER", "anthropic")  # "anthropic", "openrouter", or "auto"
+    anthropic_model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-haiku-4-5-20251001")
+
+    if not anthropic_key and not openrouter_key:
         async def error_stream():
-            yield f"data: {json.dumps({'type': 'text', 'content': 'LLM not configured. Set LLM_API_KEY.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': 'No LLM API key configured.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
-
-    client = anthropic.Anthropic(api_key=api_key)
 
     messages = []
     for msg in req.history:
@@ -651,106 +797,33 @@ async def chat(
         content = msg.get("content", "")
         if role in ("user", "assistant") and content:
             messages.append({"role": role, "content": content})
-
     messages.append({"role": "user", "content": req.message})
 
     system = SYSTEM_PROMPT.format(today=date.today().isoformat())
 
-    # Use a queue to bridge sync Anthropic streaming → async SSE
     import queue
     chunk_queue: queue.Queue = queue.Queue()
 
-    def _run_sync():
-        """Run the sync Anthropic stream in a thread, pushing chunks to queue."""
-        try:
-            max_iterations = 8
-            for _ in range(max_iterations):
-                collected_text = ""
-                tool_uses = []
-                stop_reason = None
+    def _run():
+        use_anthropic = provider in ("anthropic", "auto") and anthropic_key
+        use_openrouter = provider == "openrouter" or (not anthropic_key and openrouter_key)
 
-                with client.messages.stream(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=2048,
-                    system=system,
-                    messages=messages,
-                    tools=TOOLS,
-                ) as stream:
-                    for event in stream:
-                        if event.type == "content_block_start":
-                            if hasattr(event.content_block, "type"):
-                                if event.content_block.type == "tool_use":
-                                    tool_uses.append({
-                                        "id": event.content_block.id,
-                                        "name": event.content_block.name,
-                                        "input_json": "",
-                                    })
-                                    chunk_queue.put(f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name})}\n\n")
+        if use_anthropic and not use_openrouter:
+            _run_anthropic(anthropic_key, anthropic_model, system, messages, chunk_queue, db, current_user.id)
 
-                        elif event.type == "content_block_delta":
-                            if hasattr(event.delta, "text"):
-                                collected_text += event.delta.text
-                                chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n")
-                            elif hasattr(event.delta, "partial_json"):
-                                if tool_uses:
-                                    tool_uses[-1]["input_json"] += event.delta.partial_json
-
-                    final_message = stream.get_final_message()
-                    stop_reason = final_message.stop_reason
-
-                if stop_reason == "tool_use" and tool_uses:
-                    assistant_content = []
-                    if collected_text:
-                        assistant_content.append({"type": "text", "text": collected_text})
-                    for tu in tool_uses:
-                        try:
-                            tool_input = json.loads(tu["input_json"]) if tu["input_json"] else {}
-                        except json.JSONDecodeError:
-                            tool_input = {}
-                        assistant_content.append({
-                            "type": "tool_use", "id": tu["id"],
-                            "name": tu["name"], "input": tool_input,
-                        })
-
-                    messages.append({"role": "assistant", "content": assistant_content})
-
-                    tool_results = []
-                    for tu in tool_uses:
-                        try:
-                            tool_input = json.loads(tu["input_json"]) if tu["input_json"] else {}
-                        except json.JSONDecodeError:
-                            tool_input = {}
-
-                        executor = TOOL_EXECUTORS.get(tu["name"])
-                        if executor:
-                            result = executor(db, current_user.id, tool_input)
-                        else:
-                            result = json.dumps({"error": f"Unknown tool: {tu['name']}"})
-
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": tu["id"],
-                            "content": result,
-                        })
-
-                    messages.append({"role": "user", "content": tool_results})
-                    continue
-                else:
-                    break
-
-        except anthropic.APIError as e:
-            chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'API error: {str(e)}'})}\n\n")
-        except Exception as e:
-            chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
-        finally:
-            chunk_queue.put(None)  # Sentinel: stream done
+            # Check if Anthropic signaled fallback (credit exhausted)
+            # The sentinel None is already in the queue; check if __FALLBACK__ was sent
+        elif use_openrouter:
+            _run_openrouter(openrouter_key, openrouter_model, system, messages, chunk_queue, db, current_user.id)
+        else:
+            # Auto mode: try Anthropic first, fallback to OpenRouter
+            _run_anthropic(anthropic_key, anthropic_model, system, messages, chunk_queue, db, current_user.id)
 
     async def event_stream():
-        # Start the sync stream in a background thread
         loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, _run_sync)
+        loop.run_in_executor(None, _run)
 
-        # Yield chunks as they arrive from the thread
+        fallback_needed = False
         while True:
             try:
                 chunk = await asyncio.to_thread(chunk_queue.get, timeout=60)
@@ -758,7 +831,34 @@ async def chat(
                 break
             if chunk is None:
                 break
+            if chunk == "__FALLBACK__":
+                fallback_needed = True
+                # Drain the sentinel
+                try:
+                    await asyncio.to_thread(chunk_queue.get, timeout=2)
+                except Exception:
+                    pass
+                break
             yield chunk
+
+        # Fallback to OpenRouter if Anthropic credit exhausted
+        if fallback_needed and openrouter_key:
+            yield f"data: {json.dumps({'type': 'text', 'content': '(Switching to backup model...) '})}\n\n"
+            fallback_queue: queue.Queue = queue.Queue()
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, lambda: _run_openrouter(
+                openrouter_key, openrouter_model, system, messages, fallback_queue, db, current_user.id
+            ))
+            while True:
+                try:
+                    chunk = await asyncio.to_thread(fallback_queue.get, timeout=60)
+                except Exception:
+                    break
+                if chunk is None:
+                    break
+                yield chunk
+        elif fallback_needed:
+            yield f"data: {json.dumps({'type': 'text', 'content': 'Anthropic credits exhausted and no backup configured. Set OPENROUTER_API_KEY.'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
