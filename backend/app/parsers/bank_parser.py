@@ -109,8 +109,21 @@ def parse_bank_statement(pdf_path: str, password: str = None) -> list[ExpenseCre
         for page in pdf.pages:
             tables, ocr_text = extract_tables_with_ocr_fallback(page)
             if tables:
-                for table in tables:
+                # Merge fragmented tables (some banks like BOB split each row
+                # into a separate table). Combine tables with same column count.
+                merged = _merge_fragmented_tables(tables)
+                for table in merged:
                     transactions.extend(_parse_table_rows(table))
+                # Also try text parser — some rows may fall between table
+                # boundaries (common with BOB, Canara). Dedup by date+amount.
+                text = page.extract_text() or ""
+                if text and not is_garbled(text):
+                    text_txns = _parse_text_lines(text)
+                    existing = {(t.date, t.amount) for t in transactions}
+                    for tt in text_txns:
+                        if (tt.date, tt.amount) not in existing:
+                            transactions.append(tt)
+                            existing.add((tt.date, tt.amount))
             elif ocr_text:
                 transactions.extend(_parse_text_lines(ocr_text))
             else:
@@ -161,8 +174,8 @@ def _parse_table_rows(table: list[list]) -> list[ExpenseCreate]:
         row_str = [clean_cell(cell) for cell in row]
 
         # Skip non-transaction rows (opening balance, totals, etc.)
-        first_cell = row_str[0].lower() if row_str else ""
-        if any(kw in first_cell for kw in ["opening balance", "closing balance", "total", "scheme"]):
+        row_text = " ".join(row_str).lower()
+        if any(kw in row_text for kw in ["opening balance", "closing balance", "total transactions", "abbreviations", "nominee", "base branch"]):
             continue
 
         # Extract date
@@ -232,6 +245,14 @@ def _parse_text_lines(text: str) -> list[ExpenseCreate]:
         desc_match = re.match(r"(.+?)[\d,]+\.\d{2}", rest)
         description = desc_match.group(1).strip() if desc_match else rest[:100]
 
+        # Skip rows with very short/empty descriptions (likely parsing artifacts)
+        clean_desc = re.sub(r"[^a-zA-Z]", "", description)
+        if len(clean_desc) < 3:
+            continue
+        # Skip opening/closing balance lines
+        if any(kw in description.lower() for kw in ["opening balance", "closing balance", "total"]):
+            continue
+
         # Use the first amount as the transaction amount (usually debit)
         amount = _parse_amount(amounts[0])
         if amount is None or amount <= 0:
@@ -249,6 +270,49 @@ def _parse_text_lines(text: str) -> list[ExpenseCreate]:
         )
 
     return transactions
+
+
+def _merge_fragmented_tables(tables: list[list]) -> list[list]:
+    """Merge fragmented tables that share the same column structure.
+
+    Some bank PDFs (Bank of Baroda, etc.) produce one table per row in
+    pdfplumber. We detect tables with the same column count and merge
+    them into a single table so the header-based parser can handle them.
+    """
+    if not tables:
+        return tables
+
+    # Group by column count
+    groups: dict[int, list] = {}
+    for table in tables:
+        if not table:
+            continue
+        ncols = len(table[0]) if table else 0
+        if ncols not in groups:
+            groups[ncols] = []
+        groups[ncols].append(table)
+
+    merged = []
+    for ncols, group_tables in groups.items():
+        if len(group_tables) <= 1:
+            merged.extend(group_tables)
+            continue
+
+        # Check if this looks like a fragmented transaction table
+        # (multiple tables with same col count, most have 1-3 rows)
+        total_rows = sum(len(t) for t in group_tables)
+        avg_rows = total_rows / len(group_tables)
+
+        if avg_rows <= 3 and len(group_tables) >= 3:
+            # Likely fragmented — merge all rows into one table
+            combined = []
+            for t in group_tables:
+                combined.extend(t)
+            merged.append(combined)
+        else:
+            merged.extend(group_tables)
+
+    return merged
 
 
 def _find_col(header: list[str], keywords: list[str]) -> Optional[int]:
