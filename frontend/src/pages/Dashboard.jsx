@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Mail, Upload, ArrowRight, Wallet, Smartphone } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
-import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights } from "../api/client";
+import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights, getExpenses } from "../api/client";
 
 const COLORS = [
   "#6366f1", "#22c55e", "#eab308", "#ef4444", "#f97316",
@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [networth, setNetworth] = useState(null);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recentTxns, setRecentTxns] = useState([]);
   const [hasAnyData, setHasAnyData] = useState(null); // null = unknown, true/false = checked
   const navigate = useNavigate();
 
@@ -90,6 +91,9 @@ export default function Dashboard() {
       getSubscriptions().then(setSubscriptions).catch(() => {}),
       getNetworth(params).then(setNetworth).catch(() => {}),
       getInsights(params).then(setInsights).catch(() => {}),
+      getExpenses({ start_date: dateRange.start, end_date: dateRange.end, limit: 5 }).then((data) => {
+        setRecentTxns(Array.isArray(data) ? data : (data.expenses || []));
+      }).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [selectedYear, selectedMonth, weekOffset, mode]);
 
@@ -380,167 +384,96 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Insights — visual grid layout */}
-      {insights && (insights.top_merchants?.length > 0 || insights.by_account?.length > 0) && (
-        <>
-        {/* Row 1: Top merchants + Day of week side by side */}
-        <div className="grid-2" style={{ marginBottom: 20 }}>
-          {/* Top merchants */}
-          {insights.top_merchants?.length > 0 && (
+      {/* Spending pace + Period comparison */}
+      {hasPeriodData && mode === "month" && (() => {
+        const daysPassed = Math.max(1, Math.min(new Date().getDate(), new Date(selectedYear, selectedMonth, 0).getDate()));
+        const totalDays = new Date(selectedYear, selectedMonth, 0).getDate();
+        const dailyAvg = (summary?.expense || 0) / daysPassed;
+        const projected = dailyAvg * totalDays;
+        const daysLeft = isCurrentPeriod ? totalDays - daysPassed : 0;
+        return (
+          <div className="grid-2" style={{ marginBottom: 20 }}>
             <div className="card">
-              <h2>Top Spends</h2>
-              {insights.top_merchants.slice(0, 5).map((m, i) => {
-                const maxVal = insights.top_merchants[0]?.total || 1;
-                return (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }}>
-                        {m.name}
-                        {m.count > 1 && <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 4 }}>{m.count}x</span>}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{formatINR(m.total)}</span>
-                    </div>
-                    <div style={{ height: 4, background: "var(--bg-input)", borderRadius: 2 }}>
-                      <div style={{ height: "100%", borderRadius: 2, width: `${(m.total / maxVal) * 100}%`, background: COLORS[i % COLORS.length] }} />
-                    </div>
-                  </div>
-                );
-              })}
+              <h2>Spending Pace</h2>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{formatINR(dailyAvg)}<span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-dim)" }}>/day</span></div>
+              {isCurrentPeriod && daysLeft > 0 && (
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>
+                  Projected: {formatINR(projected)} by month end ({daysLeft} days left)
+                </div>
+              )}
             </div>
-          )}
-
-          {/* Day of week + comparison */}
-          <div className="card">
-            <h2>When You Spend</h2>
-            {insights.by_day?.some(d => d.total > 0) && (
-              <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 100, marginBottom: 16 }}>
-                {insights.by_day.map((d, i) => {
-                  const max = Math.max(...insights.by_day.map(x => x.total));
-                  const h = max > 0 ? (d.total / max) * 80 : 0;
-                  const isPeak = d.total === max && d.total > 0;
-                  return (
-                    <div key={i} style={{ flex: 1, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
-                      {isPeak && <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, marginBottom: 2 }}>{formatINR(d.total)}</div>}
-                      <div style={{
-                        width: "100%", maxWidth: 32,
-                        background: isPeak ? "var(--accent)" : d.total > 0 ? "var(--bg-input)" : "transparent",
-                        height: Math.max(h, 3), borderRadius: 4,
-                        border: isPeak ? "none" : d.total > 0 ? "1px solid var(--border)" : "none",
-                      }} />
-                      <div style={{ fontSize: 11, color: isPeak ? "var(--accent)" : "var(--text-dim)", marginTop: 6, fontWeight: isPeak ? 700 : 400 }}>{d.day}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Period comparison */}
-            {insights.vs_previous?.change_pct != null && (
-              <div style={{
-                background: insights.vs_previous.change_pct <= 0 ? "var(--green-bg)" : "var(--red-bg)",
-                border: `1px solid ${insights.vs_previous.change_pct <= 0 ? "var(--green)" : "var(--red)"}`,
-                borderRadius: 8, padding: "10px 14px", textAlign: "center",
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: insights.vs_previous.change_pct <= 0 ? "var(--green)" : "var(--red)" }}>
+            {insights?.vs_previous?.change_pct != null && (
+              <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: insights.vs_previous.change_pct <= 0 ? "var(--green)" : "var(--red)" }}>
                   {insights.vs_previous.change_pct <= 0 ? "↓" : "↑"} {Math.abs(insights.vs_previous.change_pct)}%
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
-                  vs previous ({formatINR(insights.vs_previous.previous)})
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
+                  vs last {mode === "week" ? "week" : "month"} ({formatINR(insights.vs_previous.previous)})
                 </div>
               </div>
             )}
           </div>
-        </div>
+        );
+      })()}
 
-        {/* Row 2: By Account */}
-        {insights.by_account?.length > 0 && (
-          <div className="card" style={{ marginBottom: 20 }}>
-            <h2>By Account</h2>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {insights.by_account.map((a, i) => {
-                const maxVal = insights.by_account[0]?.total || 1;
-                return (
-                  <div key={i} style={{
-                    flex: "1 1 auto", minWidth: 110,
-                    background: "var(--bg-input)", borderRadius: 10, padding: "14px",
-                    position: "relative", overflow: "hidden",
-                  }}>
-                    <div style={{
-                      position: "absolute", bottom: 0, left: 0, right: 0,
-                      height: `${(a.total / maxVal) * 40}%`,
-                      background: COLORS[i % COLORS.length] + "15",
-                    }} />
-                    <div style={{ position: "relative" }}>
-                      <div style={{ fontSize: 17, fontWeight: 700 }}>{formatINR(a.total)}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{a.account}</div>
-                      <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{a.count} transactions</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        </>
-      )}
-
-      {/* Payment Method — compact pills instead of bar chart */}
-      {paymentData.length > 0 && (
+      {/* Day of week chart */}
+      {insights?.by_day?.some(d => d.total > 0) && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <h2>By Payment Method</h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {paymentData
-              .sort((a, b) => b.value - a.value)
-              .map((item, i) => (
-                <div key={item.name} style={{
-                  flex: "1 1 auto", minWidth: 100,
-                  background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px",
-                  textAlign: "center",
-                }}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{formatINR(item.value)}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, textTransform: "capitalize" }}>{item.name}</div>
+          <h2>When You Spend</h2>
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 80 }}>
+            {insights.by_day.map((d, i) => {
+              const max = Math.max(...insights.by_day.map(x => x.total));
+              const h = max > 0 ? (d.total / max) * 64 : 0;
+              const isPeak = d.total === max && d.total > 0;
+              return (
+                <div key={i} style={{ flex: 1, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+                  {isPeak && <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, marginBottom: 2 }}>{formatINR(d.total)}</div>}
+                  <div style={{
+                    width: "100%", maxWidth: 32,
+                    background: isPeak ? "var(--accent)" : d.total > 0 ? "var(--bg-input)" : "transparent",
+                    height: Math.max(h, 3), borderRadius: 4,
+                    border: isPeak ? "none" : d.total > 0 ? "1px solid var(--border)" : "none",
+                  }} />
+                  <div style={{ fontSize: 11, color: isPeak ? "var(--accent)" : "var(--text-dim)", marginTop: 6, fontWeight: isPeak ? 700 : 400 }}>{d.day}</div>
                 </div>
-              ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* CC Outstanding — always all-time, not tied to period */}
-      {networth && networth.total_cc_debt > 0 && (
+      {/* Recent Transactions */}
+      {recentTxns.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <h2>Credit Card Balances</h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {Object.entries(networth.cc_outstanding || {}).map(([bank, info]) => (
-              <div key={bank}
-                onClick={() => navigate("/statements")}
-                style={{
-                  flex: "1 1 auto", minWidth: 120, cursor: "pointer",
-                  background: info.outstanding > 0 ? "var(--red-bg)" : "var(--green-bg)",
-                  border: `1px solid ${info.outstanding > 0 ? "var(--red)" : "var(--green)"}`,
-                  borderRadius: 10, padding: "12px 14px", textAlign: "center",
-                  transition: "opacity 0.15s",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = 0.8}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = 1}
-              >
-                <div style={{ fontSize: 18, fontWeight: 700, color: info.outstanding > 0 ? "var(--red)" : "var(--green)" }}>
-                  {info.outstanding > 0 ? formatINR(info.outstanding) : "Paid up"}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{bank}</div>
-                {info.outstanding > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>
-                    {formatINR(info.charges)} charged · {formatINR(info.payments)} paid
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ marginBottom: 0 }}>Recent Transactions</h2>
+            <span onClick={() => navigate("/expenses")} style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer", display: "flex", alignItems: "center", gap: 2 }}>
+              View all <ChevronRight size={14} />
+            </span>
+          </div>
+          {recentTxns.map((t) => {
+            const isCredit = t.amount < 0;
+            const d = new Date(t.date);
+            return (
+              <div key={t.id} onClick={() => navigate("/expenses")} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "10px 8px", borderRadius: 8, cursor: "pointer",
+                borderBottom: "1px solid var(--border)",
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.description || "Transaction"}
                   </div>
-                )}
-                <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                  View in Statements <ChevronRight size={10} />
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                    {d.getDate()} {d.toLocaleString("en-IN", { month: "short" })} · {t.category}
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, flexShrink: 0, marginLeft: 12, color: isCredit ? "var(--green)" : "var(--text)" }}>
+                  {isCredit ? "+" : ""}₹{Math.abs(t.amount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </div>
               </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8 }}>
-            Based on all imported statements. Not affected by date filter above.
-          </div>
+            );
+          })}
         </div>
       )}
 
