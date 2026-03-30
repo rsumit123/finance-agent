@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+import asyncio
 import anthropic
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -25,32 +26,42 @@ EXCLUDED_SPEND_CATEGORIES = {"transfer", "lent", "borrowed"}
 
 SYSTEM_PROMPT = """You are MoneyFlow AI — a personal finance assistant with full access to the user's transaction data.
 
-IMPORTANT DATA CONVENTIONS:
+DATA CONVENTIONS:
 - Transactions with type "debit (spent)" = money the user SPENT (outgoing)
-- Transactions with type "credit (received/refund)" = money the user RECEIVED (incoming — salary, refunds, transfers in)
-- The "amount" field is always a positive number. The "type" field tells you if it was spent or received.
-- When reporting, clearly say "spent ₹X" for debits and "received ₹X" for credits
+- Transactions with type "credit (received/refund)" = money the user RECEIVED (incoming)
+- The "amount" field is always positive. The "type" field tells direction.
+- When reporting: "spent ₹X" for debits, "received ₹X" for credits
 - Salary/income = credit transactions in "salary" category
-- Most transactions are debits (spending). Credits are refunds, salary, or transfers received.
 
-You can:
-- Search and find any transaction
-- Show spending summaries and breakdowns
-- Compare periods
-- Update transaction categories (single or bulk)
+CAPABILITIES:
+- Search and find transactions (by keyword, category, date, amount, bank)
+- Spending summaries and category breakdowns
+- Compare spending between periods
+- Update transaction categories (single or bulk with auto-rule)
 - Delete transactions
-- Detect subscriptions
-- Show net worth and CC outstanding
-- Get day-by-day spending patterns
+- Detect recurring subscriptions
+- Net worth and CC outstanding
+- Day-by-day spending patterns
 
-Guidelines:
+GUIDELINES:
 - Always use tools first — never guess amounts
-- Use ₹ symbol and Indian number formatting (1,00,000)
-- Be concise and direct
-- When updating or deleting, confirm with the user first
-- After a change, briefly confirm what was done
-- If ambiguous, ask a clarifying question
+- Use ₹ and Indian number formatting (1,00,000)
+- Be concise — no filler
+- Confirm before updating/deleting, then briefly confirm what was done
+- Ask clarifying questions if needed
 - Today's date is {today}
+
+MONEYFLOW PLATFORM GUIDE (share when users ask how-to questions):
+- **Import transactions**: Go to Import tab → Sync SMS (reads bank messages), Connect Gmail (reads bank emails + downloads statement PDFs), or upload PDF manually
+- **Hide a bank**: Account tab → "Hide Banks" section → tap the bank to exclude it from all calculations
+- **Change category**: Tap any transaction in Expenses → tap Category → pick new one. Choose "Apply to all similar" to bulk-update + save rule for future imports.
+- **Self Transfer**: Change category to "Self Transfer" → optionally link the matching opposite transaction from another bank
+- **Lent/Borrowed**: Categories for tracking money lent to others or borrowed — excluded from spending calculations
+- **Supported banks**: HDFC, Axis, ICICI, SBI, Kotak, Scapia, Bank of Baroda, Karnataka Bank, Canara Bank, and more via SMS
+- **PDF statements**: Upload password-protected PDFs. Save passwords in Import → Statement Passwords section.
+- **Budget**: Set weekly/monthly spending limits in the Budget tab
+- **Cards page**: See all cards/accounts with monthly transaction breakdown
+- **Ask AI (this chat)**: You can search transactions, recategorize, compare periods, and manage expenses through natural language
 """
 
 TOOLS = [
@@ -645,8 +656,12 @@ async def chat(
 
     system = SYSTEM_PROMPT.format(today=date.today().isoformat())
 
-    async def event_stream():
-        nonlocal messages
+    # Use a queue to bridge sync Anthropic streaming → async SSE
+    import queue
+    chunk_queue: queue.Queue = queue.Queue()
+
+    def _run_sync():
+        """Run the sync Anthropic stream in a thread, pushing chunks to queue."""
         try:
             max_iterations = 8
             for _ in range(max_iterations):
@@ -670,12 +685,12 @@ async def chat(
                                         "name": event.content_block.name,
                                         "input_json": "",
                                     })
-                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name})}\n\n"
+                                    chunk_queue.put(f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name})}\n\n")
 
                         elif event.type == "content_block_delta":
                             if hasattr(event.delta, "text"):
                                 collected_text += event.delta.text
-                                yield f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n"
+                                chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n")
                             elif hasattr(event.delta, "partial_json"):
                                 if tool_uses:
                                     tool_uses[-1]["input_json"] += event.delta.partial_json
@@ -723,13 +738,28 @@ async def chat(
                 else:
                     break
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
         except anthropic.APIError as e:
-            yield f"data: {json.dumps({'type': 'text', 'content': f'API error: {str(e)}'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'API error: {str(e)}'})}\n\n")
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
+        finally:
+            chunk_queue.put(None)  # Sentinel: stream done
+
+    async def event_stream():
+        # Start the sync stream in a background thread
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, _run_sync)
+
+        # Yield chunks as they arrive from the thread
+        while True:
+            try:
+                chunk = await asyncio.to_thread(chunk_queue.get, timeout=60)
+            except Exception:
+                break
+            if chunk is None:
+                break
+            yield chunk
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

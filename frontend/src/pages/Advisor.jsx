@@ -408,19 +408,20 @@ export default function Advisor() {
             type="submit"
             disabled={streaming || !input.trim()}
             style={{
-              width: 40, height: 40, borderRadius: 10,
+              width: 42, height: 42, borderRadius: 12,
               background: streaming || !input.trim() ? "#2d3040" : "linear-gradient(135deg, #6366f1, #7c3aed)",
               border: "none", color: "#fff",
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: streaming || !input.trim() ? "default" : "pointer",
-              flexShrink: 0, minHeight: 0,
+              flexShrink: 0, minHeight: 42,
               transition: "all 0.15s ease",
+              padding: 0,
             }}
           >
             {streaming ? (
-              <Loader size={16} style={{ animation: "spin 1s linear infinite" }} />
+              <Loader size={18} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
             ) : (
-              <Send size={16} />
+              <Send size={18} color="#fff" />
             )}
           </button>
         </form>
