@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Mail, Upload, ArrowRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Mail, Upload, ArrowRight, Wallet, Smartphone } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights } from "../api/client";
 
 const COLORS = [
@@ -140,18 +141,33 @@ export default function Dashboard() {
 
   // Onboarding: no data yet
   const hasData = summary && summary.count > 0;
+  const isNative = Capacitor.isNativePlatform();
   if (!hasData) {
     return (
       <div>
         <div className="page-header"><h1>Dashboard</h1></div>
         <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Welcome to MoneyFlow!</h2>
+          <div style={{
+            width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+            background: "linear-gradient(135deg, #6366f1, #818cf8)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Wallet size={28} style={{ color: "#fff" }} />
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Welcome to MoneyFlow</h2>
           <p style={{ color: "var(--text-dim)", marginBottom: 24, maxWidth: 400, margin: "0 auto 24px", lineHeight: 1.6 }}>
-            Get started by connecting your Gmail to automatically import transactions from your bank alerts and credit card statements.
+            Get started by importing your transactions{isNative ? " via SMS, Gmail, or PDF" : " from Gmail or a PDF statement"} — we'll auto-categorize everything.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
+            {isNative && (
+              <button
+                onClick={() => navigate("/upload")}
+                style={{ width: "100%", padding: "14px 20px", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+              >
+                <Smartphone size={18} /> Sync from SMS <ArrowRight size={16} />
+              </button>
+            )}
             <button
               onClick={() => navigate("/upload")}
               style={{ width: "100%", padding: "14px 20px", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
@@ -167,7 +183,25 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <div style={{ marginTop: 32, display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+          <div style={{ marginTop: 32, maxWidth: 340, margin: "32px auto 0", textAlign: "left" }}>
+            {[
+              "Import transactions via SMS, Gmail, or PDF",
+              "We auto-categorize everything",
+              "See your spending dashboard",
+            ].map((step, i) => (
+              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
+                <span style={{
+                  width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(99,102,241,0.15)", color: "var(--accent)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700,
+                }}>{i + 1}</span>
+                <span style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>{step}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 24, display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
             {["HDFC", "Axis", "ICICI", "Kotak", "Scapia", "SBI"].map((bank) => (
               <span key={bank} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: "rgba(99,102,241,0.1)", color: "var(--accent)" }}>
                 {bank}
@@ -190,50 +224,41 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Period picker */}
+      {/* Period picker — compact single row */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        display: "flex", alignItems: "center", gap: 6,
         background: "var(--bg-card)", border: "1px solid var(--border)",
-        borderRadius: 10, padding: "8px 12px", marginBottom: 20, flexWrap: "wrap", gap: 8,
+        borderRadius: 10, padding: "6px 10px", marginBottom: 20,
       }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button
-            className={mode === "week" ? "" : "secondary"}
-            onClick={() => setMode("week")}
-            style={{ padding: "6px 12px", fontSize: 12, minHeight: 32 }}
-          >
-            Weekly
-          </button>
-          <button
-            className={mode === "month" ? "" : "secondary"}
-            onClick={() => setMode("month")}
-            style={{ padding: "6px 12px", fontSize: 12, minHeight: 32 }}
-          >
-            Monthly
-          </button>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button className="secondary" onClick={goBack} style={{ padding: "4px 8px", minHeight: 32 }}>
-            <ChevronLeft size={16} />
-          </button>
-          <span style={{ fontSize: 14, fontWeight: 600, minWidth: 140, textAlign: "center" }}>
-            {periodLabel}
-          </span>
-          <button className="secondary" onClick={goForward} disabled={isCurrentPeriod} style={{ padding: "4px 8px", minHeight: 32 }}>
-            <ChevronRight size={16} />
-          </button>
-        </div>
-
+        <button
+          className={mode === "week" ? "" : "secondary"}
+          onClick={() => setMode("week")}
+          style={{ padding: "4px 10px", fontSize: 11, minHeight: 28 }}
+        >W</button>
+        <button
+          className={mode === "month" ? "" : "secondary"}
+          onClick={() => setMode("month")}
+          style={{ padding: "4px 10px", fontSize: 11, minHeight: 28 }}
+        >M</button>
+        <div style={{ flex: 1 }} />
+        <button className="secondary" onClick={goBack} style={{ padding: "2px 6px", minHeight: 28 }}>
+          <ChevronLeft size={14} />
+        </button>
+        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 120, textAlign: "center" }}>
+          {periodLabel}
+        </span>
+        <button className="secondary" onClick={goForward} disabled={isCurrentPeriod} style={{ padding: "2px 6px", minHeight: 28 }}>
+          <ChevronRight size={14} />
+        </button>
         {!isCurrentPeriod && (
-          <button className="secondary" onClick={goToNow} style={{ padding: "4px 10px", fontSize: 11, minHeight: 32 }}>
+          <button className="secondary" onClick={goToNow} style={{ padding: "3px 8px", fontSize: 10, minHeight: 28, marginLeft: 2 }}>
             Today
           </button>
         )}
       </div>
 
       {/* Period stats */}
-      <div className="stats-grid">
+      <div className="stats-scroll">
         <div className="stat-card">
           <div className="label">Spent (excl. transfers)</div>
           <div className="value">{formatINR(summary?.expense)}</div>
@@ -256,7 +281,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        {budget && (
+        {budget && budget.monthly_limit > 0 && (
           <>
             <div className="stat-card">
               <div className="label">Weekly Budget</div>

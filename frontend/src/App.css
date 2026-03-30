@@ -126,6 +126,22 @@ body {
   margin-bottom: 24px;
 }
 
+/* Stats horizontal scroll (dashboard) */
+.stats-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  margin-bottom: 24px;
+}
+.stats-scroll::-webkit-scrollbar { display: none; }
+.stats-scroll > .stat-card {
+  flex: 0 0 160px;
+  scroll-snap-align: start;
+}
+
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--border);

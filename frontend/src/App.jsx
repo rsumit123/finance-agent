@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import {
-  LayoutDashboard, Receipt, Upload, ShoppingCart, Wallet, CreditCard, LogOut,
+  LayoutDashboard, Receipt, Upload, ShoppingCart, Wallet, CreditCard, LogOut, Loader,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Dashboard from "./pages/Dashboard";
@@ -18,8 +18,13 @@ function ProtectedApp() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
-        Loading...
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Wallet size={28} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>MoneyFlow</span>
+        </div>
+        <Loader size={24} style={{ color: "var(--text-dim)", animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     );
   }
