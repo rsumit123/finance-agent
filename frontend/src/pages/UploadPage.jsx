@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Lock, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader, Info } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Mail, RefreshCw, Unlink, Lock, Trash2, AlertOctagon, X, AlertCircle, Calendar, Loader, Info, Smartphone } from "lucide-react";
 import { uploadStatement, getUploadHistory, getGmailStatus, getGmailAuthUrl, startGmailSync, getSyncStatus, getLatestSync, disconnectGmail, getPasswords, addPassword, deletePassword, clearAllData } from "../api/client";
 import { isSmsAvailable, syncSmsMessages } from "../services/smsSync";
 import { apiInstance } from "../api/client";
-import { Smartphone } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -119,8 +119,31 @@ export default function UploadPage() {
   const handleConnectGmail = async () => {
     try {
       const { auth_url } = await getGmailAuthUrl();
-      window.location.href = auth_url;
-    } catch {
+      if (Capacitor.isNativePlatform()) {
+        // On Android: open in external browser, then re-check on return
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.open({ url: auth_url });
+        // When user returns to app, re-check Gmail status
+        const onResume = () => {
+          getGmailStatus().then((status) => {
+            setGmailStatus(status);
+            if (status?.connected) {
+              import("@capacitor/browser").then(({ Browser: B }) => B.close().catch(() => {}));
+            }
+          }).catch(() => {});
+        };
+        // Check on app resume
+        const { App } = await import("@capacitor/app");
+        const listener = await App.addListener("resume", onResume);
+        // Also check after a short delay (user might switch back quickly)
+        setTimeout(onResume, 3000);
+        // Clean up listener after 2 minutes
+        setTimeout(() => listener.remove(), 120000);
+      } else {
+        window.location.href = auth_url;
+      }
+    } catch (err) {
+      console.error("Gmail connect error:", err);
       setError("Failed to start Gmail connection.");
     }
   };
