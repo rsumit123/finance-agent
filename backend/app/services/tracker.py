@@ -28,8 +28,18 @@ def _is_duplicate(new: ExpenseCreate, existing: Expense) -> bool:
         return False
 
     # If both have reference_id (UTR), exact match = definite duplicate
-    if new.reference_id and existing.reference_id:
-        return new.reference_id == existing.reference_id
+    new_ref = new.reference_id.replace("sms:", "") if new.reference_id else ""
+    ex_ref = existing.reference_id.replace("sms:", "") if existing.reference_id else ""
+    if new_ref and ex_ref:
+        if new_ref == ex_ref:
+            return True
+
+    # Cross-source: check if reference_id appears in the other's description
+    # e.g. SMS ref "391902478662" found in statement desc "UPI/MINTOO KUMAR/391902478662"
+    if new_ref and len(new_ref) >= 8 and existing.description and new_ref in existing.description:
+        return True
+    if ex_ref and len(ex_ref) >= 8 and new.description and ex_ref in new.description:
+        return True
 
     # Fuzzy description match
     new_desc = _normalize_desc(new.description)
