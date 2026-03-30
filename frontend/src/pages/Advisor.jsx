@@ -111,12 +111,41 @@ const TOOL_LABELS = {
   get_subscriptions: "Finding subscriptions",
 };
 
+const STORAGE_KEY = "moneyflow_chat_history";
+
+function loadMessages() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch { return []; }
+}
+
+function saveMessages(msgs) {
+  try {
+    // Only save the last 50 messages to avoid localStorage bloat
+    const toSave = msgs.slice(-50).map(m => ({ role: m.role, content: m.content }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch {}
+}
+
 export default function Advisor() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(loadMessages);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Persist messages on change
+  useEffect(() => {
+    if (messages.length > 0 && !streaming) {
+      saveMessages(messages);
+    }
+  }, [messages, streaming]);
+
+  const clearChat = () => {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -234,6 +263,27 @@ export default function Advisor() {
         @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
         .chat-suggestion:active { transform: scale(0.98); }
       `}</style>
+
+      {/* Header with clear button */}
+      {!isEmpty && (
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "10px 16px 0", flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "#e4e6f0" }}>Ask AI</span>
+          <button
+            onClick={clearChat}
+            disabled={streaming}
+            style={{
+              background: "none", border: "1px solid #2d3040", borderRadius: 8,
+              padding: "5px 12px", fontSize: 11, color: "#6b7084",
+              cursor: "pointer", minHeight: 0,
+            }}
+          >
+            New chat
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{
