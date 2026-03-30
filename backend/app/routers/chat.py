@@ -15,149 +15,161 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Expense, User, UserPreference
+from ..models import Expense, User, UserPreference, CategoryRule
 from ..services.subscriptions import detect_subscriptions
+from ..parsers.categorizer import classify_category
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 EXCLUDED_SPEND_CATEGORIES = {"transfer", "lent", "borrowed"}
 
-SYSTEM_PROMPT = (
-    "You are a helpful personal finance assistant for MoneyFlow. "
-    "You help users understand their spending, find transactions, and make better financial decisions. "
-    "Be concise and use \u20b9 for amounts. Format numbers in Indian style (1,00,000). "
-    "When asked about spending, always call the appropriate tool first rather than guessing."
-)
+SYSTEM_PROMPT = """You are MoneyFlow AI — a personal finance assistant with full access to the user's transaction data.
+
+You can:
+- Search and find any transaction
+- Show spending summaries and breakdowns
+- Compare periods
+- Update transaction categories
+- Recategorize transactions in bulk
+- Delete transactions
+- Detect subscriptions
+- Show net worth and CC outstanding
+
+Guidelines:
+- Always use tools to get data — never guess amounts or transactions
+- Use ₹ symbol and Indian number formatting (1,00,000)
+- Be concise — short answers, no filler
+- When updating or deleting, confirm with the user first by showing what you'll change
+- After making a change, briefly confirm what was done
+- If the user's request is ambiguous, ask a clarifying question
+- Today's date is {today}
+"""
 
 TOOLS = [
     {
         "name": "search_transactions",
         "description": (
-            "Search expenses by keyword, category, date range, or bank/source. "
-            "Returns a list of matching transactions with amount, category, description, date, and source."
+            "Search and find transactions by keyword, category, date range, bank, or amount range. "
+            "Use this for any question about specific transactions. Returns up to 20 results."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "keyword": {
-                    "type": "string",
-                    "description": "Search keyword to match against transaction descriptions",
-                },
-                "category": {
-                    "type": "string",
-                    "description": "Filter by category (food, transport, shopping, entertainment, bills, health, education, groceries, rent, salary, transfer, atm, emi, other)",
-                },
-                "start_date": {
-                    "type": "string",
-                    "description": "Start date in YYYY-MM-DD format",
-                },
-                "end_date": {
-                    "type": "string",
-                    "description": "End date in YYYY-MM-DD format",
-                },
-                "bank": {
-                    "type": "string",
-                    "description": "Bank name to filter by (matches against source field, e.g. 'hdfc', 'axis', 'icici')",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max results to return (default 20)",
-                },
+                "keyword": {"type": "string", "description": "Search in descriptions (e.g. 'blinkit', 'amazon', 'salary')"},
+                "category": {"type": "string", "description": "Category filter: food, transport, shopping, entertainment, bills, subscriptions, health, education, groceries, rent, home, personal care, investment, emi, transfer, lent, borrowed, atm, salary, other"},
+                "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                "bank": {"type": "string", "description": "Bank name (hdfc, axis, icici, sbi, kotak, scapia, etc.)"},
+                "min_amount": {"type": "number", "description": "Minimum absolute amount"},
+                "max_amount": {"type": "number", "description": "Maximum absolute amount"},
+                "type": {"type": "string", "enum": ["debit", "credit"], "description": "debit (spent) or credit (received)"},
+                "limit": {"type": "integer", "description": "Max results (default 20, max 50)"},
             },
             "required": [],
         },
     },
     {
         "name": "get_spending_summary",
-        "description": (
-            "Get total spent, total income, and spending breakdown by category for a given period. "
-            "Use this when the user asks about how much they spent, income, or category-wise breakdown."
-        ),
+        "description": "Get total spent, income, and category breakdown for a period. Use for 'how much did I spend' questions.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "start_date": {
-                    "type": "string",
-                    "description": "Start date in YYYY-MM-DD format",
-                },
-                "end_date": {
-                    "type": "string",
-                    "description": "End date in YYYY-MM-DD format",
-                },
-                "period": {
-                    "type": "string",
-                    "description": "Shorthand period: 'month' for current month, 'week' for current week. Overrides start/end dates.",
-                    "enum": ["month", "week"],
-                },
+                "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+                "period": {"type": "string", "enum": ["month", "week"], "description": "Shorthand: current month or week"},
             },
             "required": [],
         },
     },
     {
         "name": "get_networth",
-        "description": (
-            "Get financial overview: total income, total spent, net cashflow, and credit card outstanding amounts. "
-            "Use this when the user asks about net worth, overall financial position, or CC debt."
-        ),
+        "description": "Get income, spending, net cashflow, and CC outstanding. Use for net worth / financial overview questions.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "period": {
-                    "type": "string",
-                    "description": "Period: 'month', 'week', or omit for all-time",
-                    "enum": ["month", "week"],
-                },
-                "start_date": {
-                    "type": "string",
-                    "description": "Start date in YYYY-MM-DD format",
-                },
-                "end_date": {
-                    "type": "string",
-                    "description": "End date in YYYY-MM-DD format",
-                },
+                "period": {"type": "string", "enum": ["month", "week"]},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD"},
             },
             "required": [],
         },
     },
     {
         "name": "compare_periods",
-        "description": (
-            "Compare spending between two time periods. Returns total spent and by-category breakdown for each period. "
-            "Use when user asks to compare months, weeks, or any two date ranges."
-        ),
+        "description": "Compare spending between two date ranges. Use when user asks to compare months or weeks.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "period1_start": {
-                    "type": "string",
-                    "description": "First period start date (YYYY-MM-DD)",
-                },
-                "period1_end": {
-                    "type": "string",
-                    "description": "First period end date (YYYY-MM-DD)",
-                },
-                "period2_start": {
-                    "type": "string",
-                    "description": "Second period start date (YYYY-MM-DD)",
-                },
-                "period2_end": {
-                    "type": "string",
-                    "description": "Second period end date (YYYY-MM-DD)",
-                },
+                "period1_start": {"type": "string", "description": "YYYY-MM-DD"},
+                "period1_end": {"type": "string", "description": "YYYY-MM-DD"},
+                "period2_start": {"type": "string", "description": "YYYY-MM-DD"},
+                "period2_end": {"type": "string", "description": "YYYY-MM-DD"},
             },
             "required": ["period1_start", "period1_end", "period2_start", "period2_end"],
         },
     },
     {
         "name": "get_subscriptions",
+        "description": "Detect and list recurring payments/subscriptions from transaction history.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "update_transaction_category",
         "description": (
-            "List detected recurring/subscription payments based on expense history. "
-            "Returns name, average amount, frequency, last charged date, and total spent."
+            "Change the category of a specific transaction by ID. "
+            "Always search for the transaction first and confirm with the user before updating. "
+            "Valid categories: food, transport, shopping, entertainment, bills, subscriptions, health, education, "
+            "groceries, rent, home, personal care, investment, emi, transfer, lent, borrowed, atm, salary, other"
         ),
         "input_schema": {
             "type": "object",
-            "properties": {},
-            "required": [],
+            "properties": {
+                "transaction_id": {"type": "integer", "description": "The transaction ID to update"},
+                "new_category": {"type": "string", "description": "New category name"},
+            },
+            "required": ["transaction_id", "new_category"],
+        },
+    },
+    {
+        "name": "bulk_recategorize",
+        "description": (
+            "Recategorize all transactions matching a keyword to a new category. "
+            "Also saves a rule so future imports auto-categorize. "
+            "Always confirm with the user first — show how many will be affected."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Description keyword to match (e.g. 'blinkit', 'swiggy')"},
+                "new_category": {"type": "string", "description": "New category to apply"},
+            },
+            "required": ["keyword", "new_category"],
+        },
+    },
+    {
+        "name": "delete_transaction",
+        "description": (
+            "Delete a transaction by ID. Always search and confirm with the user before deleting. "
+            "Show the transaction details so the user can verify."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "integer", "description": "The transaction ID to delete"},
+            },
+            "required": ["transaction_id"],
+        },
+    },
+    {
+        "name": "get_daily_spending",
+        "description": "Get day-by-day spending breakdown for a period. Useful for finding spending patterns.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+            },
+            "required": ["start_date", "end_date"],
         },
     },
 ]
@@ -180,9 +192,9 @@ def _get_excluded_banks(db: Session, user_id: int) -> list[str]:
 
 def _source_to_bank(source: str) -> str:
     s = source.lower()
-    for name in ["hdfc", "axis", "scapia", "icici", "sbi", "kotak"]:
+    for name in ["hdfc", "axis", "scapia", "icici", "sbi", "kotak", "karnataka", "canara", "bob"]:
         if name in s:
-            return name.upper() if name != "scapia" else "Scapia"
+            return name.upper() if name not in ("scapia",) else "Scapia"
     return source.replace("_", " ").title()
 
 
@@ -198,6 +210,8 @@ def _is_cc_source(source: str) -> bool:
 
 
 def _parse_date(s: str) -> Optional[date]:
+    if not s:
+        return None
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except (ValueError, TypeError):
@@ -221,34 +235,7 @@ def _get_week_range():
     return start, end
 
 
-def _fmt_inr(n: float) -> str:
-    """Format number in Indian style."""
-    if n < 0:
-        return "-" + _fmt_inr(abs(n))
-    n = round(n, 2)
-    s = f"{n:,.2f}"
-    # Convert to Indian format
-    parts = s.split(".")
-    integer_part = parts[0].replace(",", "")
-    decimal_part = parts[1]
-
-    if len(integer_part) <= 3:
-        formatted = integer_part
-    else:
-        last3 = integer_part[-3:]
-        rest = integer_part[:-3]
-        groups = []
-        while rest:
-            groups.append(rest[-2:] if len(rest) >= 2 else rest)
-            rest = rest[:-2]
-        groups.reverse()
-        formatted = ",".join(groups) + "," + last3
-
-    return formatted + "." + decimal_part
-
-
 # ── Tool implementations ──────────────────────────────────────
-
 
 def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
     q = db.query(Expense).filter(Expense.user_id == user_id)
@@ -258,18 +245,29 @@ def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
     start = _parse_date(params.get("start_date", ""))
     end = _parse_date(params.get("end_date", ""))
     bank = params.get("bank", "")
+    min_amt = params.get("min_amount")
+    max_amt = params.get("max_amount")
+    txn_type = params.get("type")
     limit = min(params.get("limit", 20), 50)
 
     if start:
-        q = q.filter(Expense.date >= start)
+        q = q.filter(Expense.date >= datetime.combine(start, datetime.min.time()))
     if end:
-        q = q.filter(Expense.date <= end)
+        q = q.filter(Expense.date <= datetime.combine(end, datetime.max.time()))
     if category:
         q = q.filter(Expense.category == category.lower())
     if keyword:
         q = q.filter(Expense.description.ilike(f"%{keyword}%"))
     if bank:
         q = q.filter(Expense.source.ilike(f"%{bank.lower()}%"))
+    if txn_type == "debit":
+        q = q.filter(Expense.amount > 0)
+    elif txn_type == "credit":
+        q = q.filter(Expense.amount < 0)
+    if min_amt is not None:
+        q = q.filter(func.abs(Expense.amount) >= min_amt)
+    if max_amt is not None:
+        q = q.filter(func.abs(Expense.amount) <= max_amt)
 
     results = q.order_by(Expense.date.desc()).limit(limit).all()
 
@@ -279,6 +277,7 @@ def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
     txns = []
     for e in results:
         txns.append({
+            "id": e.id,
             "amount": e.amount,
             "category": e.category,
             "description": e.description or "",
@@ -287,7 +286,8 @@ def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
             "payment_method": e.payment_method or "",
         })
 
-    return json.dumps({"count": len(txns), "transactions": txns})
+    total = sum(abs(t["amount"]) for t in txns)
+    return json.dumps({"count": len(txns), "total_amount": round(total, 2), "transactions": txns})
 
 
 def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
@@ -304,7 +304,9 @@ def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
 
     expenses = (
         db.query(Expense)
-        .filter(Expense.user_id == user_id, Expense.date >= start, Expense.date <= end)
+        .filter(Expense.user_id == user_id,
+                Expense.date >= datetime.combine(start, datetime.min.time()),
+                Expense.date <= datetime.combine(end, datetime.max.time()))
         .all()
     )
 
@@ -320,7 +322,6 @@ def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
         if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES:
             by_category[e.category] += e.amount
 
-    # Sort by amount desc
     sorted_cats = sorted(by_category.items(), key=lambda x: -x[1])
 
     return json.dumps({
@@ -338,13 +339,19 @@ def _exec_networth(db: Session, user_id: int, params: dict) -> str:
     end = _parse_date(params.get("end_date", ""))
 
     if start and end:
-        q = db.query(Expense).filter(Expense.user_id == user_id, Expense.date >= start, Expense.date <= end)
+        q = db.query(Expense).filter(Expense.user_id == user_id,
+                                      Expense.date >= datetime.combine(start, datetime.min.time()),
+                                      Expense.date <= datetime.combine(end, datetime.max.time()))
     elif period == "month":
         s, e = _get_month_range()
-        q = db.query(Expense).filter(Expense.user_id == user_id, Expense.date >= s, Expense.date <= e)
+        q = db.query(Expense).filter(Expense.user_id == user_id,
+                                      Expense.date >= datetime.combine(s, datetime.min.time()),
+                                      Expense.date <= datetime.combine(e, datetime.max.time()))
     elif period == "week":
         s, e = _get_week_range()
-        q = db.query(Expense).filter(Expense.user_id == user_id, Expense.date >= s, Expense.date <= e)
+        q = db.query(Expense).filter(Expense.user_id == user_id,
+                                      Expense.date >= datetime.combine(s, datetime.min.time()),
+                                      Expense.date <= datetime.combine(e, datetime.max.time()))
     else:
         q = db.query(Expense).filter(Expense.user_id == user_id)
 
@@ -356,7 +363,7 @@ def _exec_networth(db: Session, user_id: int, params: dict) -> str:
     total_income = sum(abs(e.amount) for e in expenses if e.category == "salary")
     total_spent = sum(e.amount for e in expenses if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES)
 
-    # CC outstanding from all-time data
+    # CC outstanding all-time
     all_expenses = db.query(Expense).filter(Expense.user_id == user_id).all()
     if excluded:
         all_expenses = [e for e in all_expenses if _source_to_bank(e.source or "").lower() not in [b.lower() for b in excluded]]
@@ -398,38 +405,27 @@ def _exec_compare_periods(db: Session, user_id: int, params: dict) -> str:
 
     excluded = _get_excluded_banks(db, user_id)
 
-    def _summarize(start, end):
-        expenses = (
-            db.query(Expense)
-            .filter(Expense.user_id == user_id, Expense.date >= start, Expense.date <= end)
-            .all()
-        )
+    def _summarize(s, e):
+        expenses = db.query(Expense).filter(
+            Expense.user_id == user_id,
+            Expense.date >= datetime.combine(s, datetime.min.time()),
+            Expense.date <= datetime.combine(e, datetime.max.time()),
+        ).all()
         if excluded:
-            expenses = [e for e in expenses if _source_to_bank(e.source or "").lower() not in [b.lower() for b in excluded]]
-
-        total = sum(e.amount for e in expenses if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES)
+            expenses = [x for x in expenses if _source_to_bank(x.source or "").lower() not in [b.lower() for b in excluded]]
+        total = sum(x.amount for x in expenses if x.amount > 0 and x.category not in EXCLUDED_SPEND_CATEGORIES)
         by_cat = defaultdict(float)
-        for e in expenses:
-            if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES:
-                by_cat[e.category] += e.amount
-        return {
-            "period": f"{start} to {end}",
-            "total_spent": round(total, 2),
-            "by_category": {k: round(v, 2) for k, v in sorted(by_cat.items(), key=lambda x: -x[1])},
-        }
+        for x in expenses:
+            if x.amount > 0 and x.category not in EXCLUDED_SPEND_CATEGORIES:
+                by_cat[x.category] += x.amount
+        return {"period": f"{s} to {e}", "total_spent": round(total, 2), "by_category": {k: round(v, 2) for k, v in sorted(by_cat.items(), key=lambda x: -x[1])}}
 
     p1 = _summarize(p1_start, p1_end)
     p2 = _summarize(p2_start, p2_end)
-
     diff = p2["total_spent"] - p1["total_spent"]
     pct = round((diff / p1["total_spent"]) * 100, 1) if p1["total_spent"] > 0 else None
 
-    return json.dumps({
-        "period1": p1,
-        "period2": p2,
-        "difference": round(diff, 2),
-        "change_percent": pct,
-    })
+    return json.dumps({"period1": p1, "period2": p2, "difference": round(diff, 2), "change_percent": pct})
 
 
 def _exec_subscriptions(db: Session, user_id: int, params: dict) -> str:
@@ -437,15 +433,157 @@ def _exec_subscriptions(db: Session, user_id: int, params: dict) -> str:
     result = []
     for s in subs:
         result.append({
-            "name": s.name,
-            "amount": s.amount,
-            "frequency": s.frequency,
+            "name": s.name, "amount": s.amount, "frequency": s.frequency,
             "last_charged": s.last_charged.isoformat() if s.last_charged else None,
             "next_expected": s.next_expected.isoformat() if s.next_expected else None,
-            "total_spent": s.total_spent,
-            "occurrence_count": s.occurrence_count,
+            "total_spent": s.total_spent, "occurrence_count": s.occurrence_count,
         })
-    return json.dumps({"subscriptions": result, "count": len(result)})
+    return json.dumps({"subscriptions": result, "count": len(result), "total_monthly": round(sum(s.amount for s in subs), 2)})
+
+
+def _exec_update_category(db: Session, user_id: int, params: dict) -> str:
+    txn_id = params.get("transaction_id")
+    new_cat = params.get("new_category", "").lower()
+
+    valid_cats = {"food", "transport", "shopping", "entertainment", "bills", "subscriptions",
+                  "health", "education", "groceries", "rent", "home", "personal care",
+                  "investment", "emi", "transfer", "lent", "borrowed", "atm", "salary", "other"}
+    if new_cat not in valid_cats:
+        return json.dumps({"error": f"Invalid category '{new_cat}'. Valid: {', '.join(sorted(valid_cats))}"})
+
+    expense = db.query(Expense).filter(Expense.id == txn_id, Expense.user_id == user_id).first()
+    if not expense:
+        return json.dumps({"error": f"Transaction {txn_id} not found."})
+
+    old_cat = expense.category
+    expense.category = new_cat
+    db.commit()
+
+    return json.dumps({
+        "success": True,
+        "transaction_id": txn_id,
+        "old_category": old_cat,
+        "new_category": new_cat,
+        "description": expense.description,
+        "amount": expense.amount,
+    })
+
+
+def _exec_bulk_recategorize(db: Session, user_id: int, params: dict) -> str:
+    keyword = params.get("keyword", "").strip()
+    new_cat = params.get("new_category", "").lower()
+
+    if not keyword:
+        return json.dumps({"error": "Keyword is required."})
+
+    valid_cats = {"food", "transport", "shopping", "entertainment", "bills", "subscriptions",
+                  "health", "education", "groceries", "rent", "home", "personal care",
+                  "investment", "emi", "transfer", "lent", "borrowed", "atm", "salary", "other"}
+    if new_cat not in valid_cats:
+        return json.dumps({"error": f"Invalid category '{new_cat}'."})
+
+    matches = db.query(Expense).filter(
+        Expense.user_id == user_id,
+        Expense.description.ilike(f"%{keyword}%"),
+    ).all()
+
+    if not matches:
+        return json.dumps({"updated": 0, "message": f"No transactions matching '{keyword}'."})
+
+    updated = 0
+    for e in matches:
+        if e.category != new_cat:
+            e.category = new_cat
+            updated += 1
+
+    # Save rule for future auto-categorization
+    existing_rule = db.query(CategoryRule).filter(
+        CategoryRule.user_id == user_id,
+        CategoryRule.keyword == keyword.lower(),
+    ).first()
+    if existing_rule:
+        existing_rule.category = new_cat
+    else:
+        db.add(CategoryRule(user_id=user_id, keyword=keyword.lower(), category=new_cat))
+
+    db.commit()
+
+    return json.dumps({
+        "updated": updated,
+        "total_matches": len(matches),
+        "keyword": keyword,
+        "new_category": new_cat,
+        "rule_saved": True,
+        "message": f"Updated {updated} transactions and saved rule: '{keyword}' → {new_cat}",
+    })
+
+
+def _exec_delete_transaction(db: Session, user_id: int, params: dict) -> str:
+    txn_id = params.get("transaction_id")
+
+    expense = db.query(Expense).filter(Expense.id == txn_id, Expense.user_id == user_id).first()
+    if not expense:
+        return json.dumps({"error": f"Transaction {txn_id} not found."})
+
+    details = {
+        "id": expense.id,
+        "amount": expense.amount,
+        "description": expense.description,
+        "date": expense.date.strftime("%Y-%m-%d") if expense.date else "",
+        "category": expense.category,
+    }
+
+    # Unlink if it was a linked transfer
+    if expense.linked_transaction_id:
+        other = db.query(Expense).filter(Expense.id == expense.linked_transaction_id).first()
+        if other:
+            other.linked_transaction_id = None
+
+    db.delete(expense)
+    db.commit()
+
+    return json.dumps({"success": True, "deleted": details})
+
+
+def _exec_daily_spending(db: Session, user_id: int, params: dict) -> str:
+    start = _parse_date(params.get("start_date", ""))
+    end = _parse_date(params.get("end_date", ""))
+    if not start or not end:
+        start, end = _get_month_range()
+
+    expenses = db.query(Expense).filter(
+        Expense.user_id == user_id,
+        Expense.date >= datetime.combine(start, datetime.min.time()),
+        Expense.date <= datetime.combine(end, datetime.max.time()),
+        Expense.amount > 0,
+    ).all()
+
+    excluded = _get_excluded_banks(db, user_id)
+    if excluded:
+        expenses = [e for e in expenses if _source_to_bank(e.source or "").lower() not in [b.lower() for b in excluded]]
+
+    expenses = [e for e in expenses if e.category not in EXCLUDED_SPEND_CATEGORIES]
+
+    by_day = defaultdict(float)
+    by_day_count = defaultdict(int)
+    for e in expenses:
+        d = e.date.strftime("%Y-%m-%d") if e.date else "unknown"
+        by_day[d] += e.amount
+        by_day_count[d] += 1
+
+    days = sorted(by_day.keys())
+    daily = [{"date": d, "amount": round(by_day[d], 2), "transactions": by_day_count[d]} for d in days]
+    total = sum(by_day.values())
+    avg = total / len(days) if days else 0
+
+    return json.dumps({
+        "period": f"{start} to {end}",
+        "days": daily,
+        "total": round(total, 2),
+        "daily_average": round(avg, 2),
+        "highest_day": max(daily, key=lambda x: x["amount"]) if daily else None,
+        "lowest_day": min(daily, key=lambda x: x["amount"]) if daily else None,
+    })
 
 
 TOOL_EXECUTORS = {
@@ -454,6 +592,10 @@ TOOL_EXECUTORS = {
     "get_networth": _exec_networth,
     "compare_periods": _exec_compare_periods,
     "get_subscriptions": _exec_subscriptions,
+    "update_transaction_category": _exec_update_category,
+    "bulk_recategorize": _exec_bulk_recategorize,
+    "delete_transaction": _exec_delete_transaction,
+    "get_daily_spending": _exec_daily_spending,
 }
 
 
@@ -467,13 +609,12 @@ async def chat(
     api_key = os.getenv("LLM_API_KEY", "")
     if not api_key:
         async def error_stream():
-            yield f"data: {json.dumps({'type': 'text', 'content': 'LLM API key not configured. Please set LLM_API_KEY environment variable.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': 'LLM not configured. Set LLM_API_KEY.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    # Build messages from history + new message
     messages = []
     for msg in req.history:
         role = msg.get("role", "user")
@@ -483,13 +624,13 @@ async def chat(
 
     messages.append({"role": "user", "content": req.message})
 
+    system = SYSTEM_PROMPT.format(today=date.today().isoformat())
+
     async def event_stream():
         nonlocal messages
         try:
-            # Loop to handle tool use -> response cycles
-            max_iterations = 5
+            max_iterations = 8
             for _ in range(max_iterations):
-                # Make the API call with streaming
                 collected_text = ""
                 tool_uses = []
                 stop_reason = None
@@ -497,7 +638,7 @@ async def chat(
                 with client.messages.stream(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=2048,
-                    system=SYSTEM_PROMPT,
+                    system=system,
                     messages=messages,
                     tools=TOOLS,
                 ) as stream:
@@ -510,8 +651,7 @@ async def chat(
                                         "name": event.content_block.name,
                                         "input_json": "",
                                     })
-                                    # Send tool use indicator
-                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name, 'input': {}})}\n\n"
+                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': event.content_block.name})}\n\n"
 
                         elif event.type == "content_block_delta":
                             if hasattr(event.delta, "text"):
@@ -521,13 +661,10 @@ async def chat(
                                 if tool_uses:
                                     tool_uses[-1]["input_json"] += event.delta.partial_json
 
-                    # Get the final message to check stop reason
                     final_message = stream.get_final_message()
                     stop_reason = final_message.stop_reason
 
-                # If the model wants to use tools, execute them
                 if stop_reason == "tool_use" and tool_uses:
-                    # Build the assistant message with all content blocks
                     assistant_content = []
                     if collected_text:
                         assistant_content.append({"type": "text", "text": collected_text})
@@ -537,15 +674,12 @@ async def chat(
                         except json.JSONDecodeError:
                             tool_input = {}
                         assistant_content.append({
-                            "type": "tool_use",
-                            "id": tu["id"],
-                            "name": tu["name"],
-                            "input": tool_input,
+                            "type": "tool_use", "id": tu["id"],
+                            "name": tu["name"], "input": tool_input,
                         })
 
                     messages.append({"role": "assistant", "content": assistant_content})
 
-                    # Execute each tool and build tool results
                     tool_results = []
                     for tu in tool_uses:
                         try:
@@ -566,10 +700,8 @@ async def chat(
                         })
 
                     messages.append({"role": "user", "content": tool_results})
-                    # Continue the loop to get the final response
                     continue
                 else:
-                    # No more tool calls, we're done
                     break
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

@@ -217,72 +217,67 @@ export default function Advisor() {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, paddingBottom: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 8 }}>
             {messages.map((msg, i) => (
-              <div key={i} style={{
-                display: "flex",
-                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-                gap: 8, alignItems: "flex-end",
-                animation: "fadeIn 0.2s ease-out both",
-              }}>
-                {/* AI avatar */}
-                {msg.role === "assistant" && (
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 10, flexShrink: 0,
-                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    marginBottom: 2,
-                  }}>
-                    <Sparkles size={13} color="#fff" />
+              <div key={i} style={{ animation: "fadeIn 0.2s ease-out both" }}>
+                {msg.role === "user" ? (
+                  /* User message — right-aligned bubble */
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{
+                      background: "linear-gradient(135deg, #6366f1, #7c3aed)",
+                      color: "#fff",
+                      padding: "10px 16px",
+                      borderRadius: "18px 18px 4px 18px",
+                      fontSize: 14, lineHeight: 1.5,
+                      maxWidth: "85%",
+                      whiteSpace: "pre-wrap", wordBreak: "break-word",
+                    }}>
+                      {msg.content}
+                    </div>
                   </div>
-                )}
-
-                <div style={{ maxWidth: "80%", minWidth: 0 }}>
-                  {/* Tool indicators */}
-                  {msg.tools?.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
-                      {msg.tools.map((tool, j) => (
-                        <span key={j} style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          padding: "3px 10px", borderRadius: 8,
-                          background: "rgba(99,102,241,0.08)",
-                          border: "1px solid rgba(99,102,241,0.15)",
-                          fontSize: 11, color: "#818cf8", fontWeight: 500,
-                        }}>
-                          <span style={{ animation: streaming && i === messages.length - 1 && !msg.content ? "pulse 1.5s infinite" : "none" }}>
+                ) : (
+                  /* AI response — full width, no bubble */
+                  <div style={{ paddingLeft: 4 }}>
+                    {/* Tool indicators */}
+                    {msg.tools?.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                        {msg.tools.map((tool, j) => (
+                          <span key={j} style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "4px 10px", borderRadius: 8,
+                            background: "rgba(99,102,241,0.06)",
+                            border: "1px solid rgba(99,102,241,0.12)",
+                            fontSize: 11, color: "#818cf8", fontWeight: 500,
+                          }}>
+                            <span style={{
+                              width: 4, height: 4, borderRadius: "50%", background: "#818cf8",
+                              animation: streaming && i === messages.length - 1 && !msg.content ? "pulse 1s infinite" : "none",
+                            }} />
                             {TOOL_LABELS[tool] || tool}
                           </span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Message bubble */}
-                  <div style={msg.role === "user" ? {
-                    background: "linear-gradient(135deg, #6366f1, #7c3aed)",
-                    color: "#fff",
-                    padding: "12px 16px",
-                    borderRadius: "18px 18px 4px 18px",
-                    fontSize: 14, lineHeight: 1.6,
-                    whiteSpace: "pre-wrap", wordBreak: "break-word",
-                  } : {
-                    background: "#1a1d27",
-                    color: "#e4e6f0",
-                    padding: "12px 16px",
-                    borderRadius: "18px 18px 18px 4px",
-                    fontSize: 14, lineHeight: 1.6,
-                    whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    border: "1px solid #2d3040",
-                  }}>
-                    {msg.content || (msg.role === "assistant" && streaming && i === messages.length - 1 ? (
-                      <div style={{ display: "flex", gap: 4, padding: "4px 0" }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0s" }} />
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0.2s" }} />
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0.4s" }} />
+                        ))}
                       </div>
-                    ) : null)}
+                    )}
+
+                    {/* Response text — full width, styled like Claude */}
+                    {msg.content ? (
+                      <div style={{
+                        fontSize: 14, lineHeight: 1.7, color: "#d1d5e0",
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      }}>
+                        {msg.content}
+                      </div>
+                    ) : (
+                      streaming && i === messages.length - 1 && (
+                        <div style={{ display: "flex", gap: 4, padding: "8px 0" }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0s" }} />
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0.2s" }} />
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6366f1", animation: "pulse 1s infinite 0.4s" }} />
+                        </div>
+                      )
+                    )}
                   </div>
-                </div>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} />
