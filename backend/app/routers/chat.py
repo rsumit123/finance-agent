@@ -843,7 +843,6 @@ async def chat(
 
         # Fallback to OpenRouter if Anthropic credit exhausted
         if fallback_needed and openrouter_key:
-            yield f"data: {json.dumps({'type': 'text', 'content': '(Switching to backup model...) '})}\n\n"
             fallback_queue: queue.Queue = queue.Queue()
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, lambda: _run_openrouter(
