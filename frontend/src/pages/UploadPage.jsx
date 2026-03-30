@@ -44,6 +44,7 @@ export default function UploadPage() {
   const [smsAvailable] = useState(isSmsAvailable());
   const [smsSyncing, setSmsSyncing] = useState(false);
   const [smsResult, setSmsResult] = useState(null);
+  const [smsLastSync, setSmsLastSync] = useState(localStorage.getItem("sms_last_sync") || null);
 
   const refreshAll = () => {
     setGmailLoading(true);
@@ -188,7 +189,12 @@ export default function UploadPage() {
     try {
       const result = await syncSmsMessages(apiInstance, 90);
       setSmsResult(result);
-      if (result && !result.error) refreshAll();
+      if (result && !result.error) {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+        localStorage.setItem("sms_last_sync", now);
+        setSmsLastSync(now);
+        refreshAll();
+      }
     } catch (err) {
       setSmsResult({ error: err.message || "SMS sync failed" });
     } finally {
@@ -228,6 +234,7 @@ export default function UploadPage() {
 
           <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
             Syncs bank SMS from the last 90 days ({new Date(Date.now() - 90 * 86400000).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → Today)
+            {smsLastSync && <span style={{ display: "block", marginTop: 4, fontSize: 11 }}>Last synced: {smsLastSync}</span>}
           </p>
 
           <button onClick={handleSmsSync} disabled={smsSyncing}

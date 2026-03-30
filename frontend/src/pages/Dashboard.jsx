@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [networth, setNetworth] = useState(null);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasAnyData, setHasAnyData] = useState(null); // null = unknown, true/false = checked
   const navigate = useNavigate();
 
   // Period state
@@ -71,6 +72,14 @@ export default function Dashboard() {
   const isCurrentPeriod = mode === "month"
     ? (selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1)
     : weekOffset === 0;
+
+  // One-time check: does user have any data at all?
+  useEffect(() => {
+    if (hasAnyData !== null) return;
+    getExpenseSummary({ start_date: "2020-01-01", end_date: "2030-12-31" })
+      .then((s) => setHasAnyData(s && s.count > 0))
+      .catch(() => setHasAnyData(false));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -139,10 +148,10 @@ export default function Dashboard() {
     );
   }
 
-  // Onboarding: no data yet
-  const hasData = summary && summary.count > 0;
+  // Onboarding: only show when user has NO data at all (not just empty period)
+  const hasPeriodData = summary && summary.count > 0;
   const isNative = Capacitor.isNativePlatform();
-  if (!hasData) {
+  if (hasAnyData === false) {
     return (
       <div>
         <div className="page-header"><h1>Dashboard</h1></div>
@@ -257,8 +266,16 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Empty period message */}
+      {!hasPeriodData && (
+        <div className="card" style={{ textAlign: "center", padding: "32px 20px", marginBottom: 20 }}>
+          <div style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 8 }}>No transactions in this period</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Try switching to Monthly or navigate to a different {mode === "week" ? "week" : "month"}.</div>
+        </div>
+      )}
+
       {/* Period stats */}
-      <div className="stats-scroll">
+      {hasPeriodData && <div className="stats-scroll">
         <div className="stat-card">
           <div className="label">Spent (excl. transfers)</div>
           <div className="value">{formatINR(summary?.expense)}</div>
@@ -315,7 +332,7 @@ export default function Dashboard() {
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Category Breakdown — horizontal bars instead of pie chart */}
       <div className="card" style={{ marginBottom: 20 }}>
