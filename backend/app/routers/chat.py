@@ -198,6 +198,12 @@ TOOLS = [
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []
+    clear: bool = False  # True to start a new conversation
+
+
+# Server-side conversation store (keyed by user_id)
+# Stores full message history including tool calls/results
+_conversations: dict[int, list[dict]] = {}
 
 
 def _get_excluded_banks(db: Session, user_id: int) -> list[str]:
@@ -653,12 +659,19 @@ def _convert_tools_to_openai_format():
     return [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in TOOLS]
 
 
+def _save_assistant_response(user_id: int, text: str):
+    """Save the assistant's final text response to server conversation."""
+    if user_id in _conversations and text.strip():
+        _conversations[user_id].append({"role": "assistant", "content": text})
+
+
 def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk_queue, db, user_id: int):
     """Run chat via OpenRouter (OpenAI-compatible API) with tool use."""
     import httpx
 
     openai_tools = _convert_tools_to_openai_format()
     openai_messages = [{"role": "system", "content": system}] + messages
+    collected_final_text = ""
 
     try:
         max_iterations = 8
@@ -683,6 +696,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
 
             # Stream the text content
             if msg.get("content"):
+                collected_final_text += msg["content"]
                 words = msg["content"].split(" ")
                 for i, word in enumerate(words):
                     chunk = word if i == 0 else " " + word
@@ -725,6 +739,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
         _log_chat(user_id, f"[OpenRouter exception] {str(e)}")
         chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
     finally:
+        _save_assistant_response(user_id, collected_final_text)
         chunk_queue.put(None)
 
 
@@ -733,6 +748,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
 def _run_anthropic(api_key: str, model: str, system: str, messages: list, chunk_queue, db, user_id: int):
     """Run chat via Anthropic API with streaming + tool use."""
     client = anthropic.Anthropic(api_key=api_key)
+    final_text = ""
 
     try:
         max_iterations = 8
@@ -786,6 +802,7 @@ def _run_anthropic(api_key: str, model: str, system: str, messages: list, chunk_
                 messages.append({"role": "user", "content": tool_results})
                 continue
             else:
+                final_text += collected_text
                 break
 
     except anthropic.APIError as e:
@@ -798,6 +815,7 @@ def _run_anthropic(api_key: str, model: str, system: str, messages: list, chunk_
     except Exception as e:
         chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
     finally:
+        _save_assistant_response(user_id, final_text)
         chunk_queue.put(None)
 
 
@@ -820,15 +838,31 @@ async def chat(
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    messages = []
-    for msg in req.history:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role in ("user", "assistant") and content:
-            messages.append({"role": role, "content": content})
-    messages.append({"role": "user", "content": req.message})
+    uid = current_user.id
 
-    _log_chat(current_user.id, f"[User] {req.message}")
+    # Clear conversation if requested
+    if req.clear:
+        _conversations.pop(uid, None)
+
+    # Use server-side conversation (has full tool context)
+    # Fall back to client history only if no server state exists
+    if uid not in _conversations:
+        _conversations[uid] = []
+        # Seed from client history (text only — better than nothing)
+        for msg in req.history:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and content:
+                _conversations[uid].append({"role": role, "content": content})
+
+    # Keep conversation manageable (last 40 messages)
+    if len(_conversations[uid]) > 40:
+        _conversations[uid] = _conversations[uid][-30:]
+
+    _conversations[uid].append({"role": "user", "content": req.message})
+    messages = list(_conversations[uid])  # Copy for this request
+
+    _log_chat(uid, f"[User] {req.message} (history: {len(messages)} msgs)")
 
     system = SYSTEM_PROMPT.format(today=date.today().isoformat())
 

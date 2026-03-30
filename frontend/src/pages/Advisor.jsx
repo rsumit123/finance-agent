@@ -145,6 +145,13 @@ export default function Advisor() {
   const clearChat = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
+    // Clear server-side conversation too
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ message: "", history: [], clear: true }),
+    }).catch(() => {});
   };
 
   const scrollToBottom = () => {
