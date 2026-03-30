@@ -2,6 +2,100 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Loader, Sparkles, Wallet, Search, BarChart3, TrendingUp, RefreshCw } from "lucide-react";
 import { API_URL } from "../api/client";
 
+/** Render basic markdown: **bold**, *italic*, `code`, bullet lists, numbered lists */
+function renderMarkdown(text) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements = [];
+  let listItems = [];
+  let listType = null; // "ul" or "ol"
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      const Tag = listType === "ol" ? "ol" : "ul";
+      elements.push(
+        <Tag key={`list-${elements.length}`} style={{ margin: "6px 0", paddingLeft: 20, fontSize: 14, lineHeight: 1.7 }}>
+          {listItems.map((li, j) => <li key={j} style={{ marginBottom: 2 }}>{formatInline(li)}</li>)}
+        </Tag>
+      );
+      listItems = [];
+      listType = null;
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const bulletMatch = line.match(/^[\s]*[-•*]\s+(.+)/);
+    const numberMatch = line.match(/^[\s]*\d+[.)]\s+(.+)/);
+
+    if (bulletMatch) {
+      if (listType !== "ul") flushList();
+      listType = "ul";
+      listItems.push(bulletMatch[1]);
+    } else if (numberMatch) {
+      if (listType !== "ol") flushList();
+      listType = "ol";
+      listItems.push(numberMatch[1]);
+    } else {
+      flushList();
+      if (line.trim() === "") {
+        elements.push(<div key={`br-${i}`} style={{ height: 8 }} />);
+      } else {
+        elements.push(<div key={`p-${i}`} style={{ marginBottom: 2 }}>{formatInline(line)}</div>);
+      }
+    }
+  }
+  flushList();
+  return <>{elements}</>;
+}
+
+function formatInline(text) {
+  // Split by markdown patterns and render
+  const parts = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining) {
+    // **bold**
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    // `code`
+    const codeMatch = remaining.match(/`(.+?)`/);
+
+    // Find earliest match
+    let earliest = null;
+    let matchType = null;
+
+    if (boldMatch && (!earliest || boldMatch.index < earliest.index)) {
+      earliest = boldMatch;
+      matchType = "bold";
+    }
+    if (codeMatch && (!earliest || codeMatch.index < earliest.index)) {
+      earliest = codeMatch;
+      matchType = "code";
+    }
+
+    if (!earliest) {
+      parts.push(remaining);
+      break;
+    }
+
+    // Text before match
+    if (earliest.index > 0) {
+      parts.push(remaining.substring(0, earliest.index));
+    }
+
+    if (matchType === "bold") {
+      parts.push(<strong key={key++} style={{ color: "#e4e6f0", fontWeight: 600 }}>{earliest[1]}</strong>);
+    } else if (matchType === "code") {
+      parts.push(<code key={key++} style={{ background: "rgba(99,102,241,0.1)", padding: "1px 5px", borderRadius: 4, fontSize: 13, color: "#818cf8" }}>{earliest[1]}</code>);
+    }
+
+    remaining = remaining.substring(earliest.index + earliest[0].length);
+  }
+
+  return <>{parts}</>;
+}
+
 const SUGGESTIONS = [
   { text: "How much did I spend this month?", icon: BarChart3 },
   { text: "Compare my Feb vs March spending", icon: TrendingUp },
@@ -259,13 +353,13 @@ export default function Advisor() {
                       </div>
                     )}
 
-                    {/* Response text — full width, styled like Claude */}
+                    {/* Response text — full width with markdown */}
                     {msg.content ? (
                       <div style={{
                         fontSize: 14, lineHeight: 1.7, color: "#d1d5e0",
-                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                        wordBreak: "break-word",
                       }}>
-                        {msg.content}
+                        {renderMarkdown(msg.content)}
                       </div>
                     ) : (
                       streaming && i === messages.length - 1 && (

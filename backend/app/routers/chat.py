@@ -25,23 +25,31 @@ EXCLUDED_SPEND_CATEGORIES = {"transfer", "lent", "borrowed"}
 
 SYSTEM_PROMPT = """You are MoneyFlow AI — a personal finance assistant with full access to the user's transaction data.
 
+IMPORTANT DATA CONVENTIONS:
+- Transactions with type "debit (spent)" = money the user SPENT (outgoing)
+- Transactions with type "credit (received/refund)" = money the user RECEIVED (incoming — salary, refunds, transfers in)
+- The "amount" field is always a positive number. The "type" field tells you if it was spent or received.
+- When reporting, clearly say "spent ₹X" for debits and "received ₹X" for credits
+- Salary/income = credit transactions in "salary" category
+- Most transactions are debits (spending). Credits are refunds, salary, or transfers received.
+
 You can:
 - Search and find any transaction
 - Show spending summaries and breakdowns
 - Compare periods
-- Update transaction categories
-- Recategorize transactions in bulk
+- Update transaction categories (single or bulk)
 - Delete transactions
 - Detect subscriptions
 - Show net worth and CC outstanding
+- Get day-by-day spending patterns
 
 Guidelines:
-- Always use tools to get data — never guess amounts or transactions
+- Always use tools first — never guess amounts
 - Use ₹ symbol and Indian number formatting (1,00,000)
-- Be concise — short answers, no filler
-- When updating or deleting, confirm with the user first by showing what you'll change
-- After making a change, briefly confirm what was done
-- If the user's request is ambiguous, ask a clarifying question
+- Be concise and direct
+- When updating or deleting, confirm with the user first
+- After a change, briefly confirm what was done
+- If ambiguous, ask a clarifying question
 - Today's date is {today}
 """
 
@@ -276,9 +284,11 @@ def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
 
     txns = []
     for e in results:
+        is_credit = e.amount < 0
         txns.append({
             "id": e.id,
-            "amount": e.amount,
+            "amount": abs(e.amount),
+            "type": "credit (received/refund)" if is_credit else "debit (spent)",
             "category": e.category,
             "description": e.description or "",
             "date": e.date.strftime("%Y-%m-%d") if e.date else "",
@@ -286,8 +296,9 @@ def _exec_search_transactions(db: Session, user_id: int, params: dict) -> str:
             "payment_method": e.payment_method or "",
         })
 
-    total = sum(abs(t["amount"]) for t in txns)
-    return json.dumps({"count": len(txns), "total_amount": round(total, 2), "transactions": txns})
+    total_spent = sum(t["amount"] for t in txns if "debit" in t["type"])
+    total_received = sum(t["amount"] for t in txns if "credit" in t["type"])
+    return json.dumps({"count": len(txns), "total_spent": round(total_spent, 2), "total_received": round(total_received, 2), "transactions": txns})
 
 
 def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
@@ -316,6 +327,7 @@ def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
 
     total_income = sum(abs(e.amount) for e in expenses if e.category == "salary")
     total_spent = sum(e.amount for e in expenses if e.amount > 0 and e.category not in EXCLUDED_SPEND_CATEGORIES)
+    total_credits = sum(abs(e.amount) for e in expenses if e.amount < 0 and e.category != "salary")
 
     by_category = defaultdict(float)
     for e in expenses:
@@ -323,12 +335,18 @@ def _exec_spending_summary(db: Session, user_id: int, params: dict) -> str:
             by_category[e.category] += e.amount
 
     sorted_cats = sorted(by_category.items(), key=lambda x: -x[1])
+    num_debits = sum(1 for e in expenses if e.amount > 0)
+    num_credits = sum(1 for e in expenses if e.amount < 0)
 
     return json.dumps({
         "period": f"{start} to {end}",
-        "total_spent": round(total_spent, 2),
-        "total_income": round(total_income, 2),
+        "total_spent_debits": round(total_spent, 2),
+        "total_salary_income": round(total_income, 2),
+        "total_credits_received": round(total_credits, 2),
         "transaction_count": len(expenses),
+        "debit_count": num_debits,
+        "credit_count": num_credits,
+        "note": "Positive amounts = money spent (debits). Salary = income received. Credits = refunds/transfers received.",
         "by_category": {k: round(v, 2) for k, v in sorted_cats},
     })
 
@@ -386,11 +404,12 @@ def _exec_networth(db: Session, user_id: int, params: dict) -> str:
         total_cc_debt += outstanding
 
     return json.dumps({
-        "total_income": round(total_income, 2),
-        "total_spent": round(total_spent, 2),
+        "total_salary_income_received": round(total_income, 2),
+        "total_spent_debits": round(total_spent, 2),
         "net_cashflow": round(total_income - total_spent, 2),
-        "cc_outstanding": cc_outstanding,
+        "cc_outstanding_by_bank": cc_outstanding,
         "total_cc_debt": round(total_cc_debt, 2),
+        "note": "Income = salary received. Spent = all debits excluding self-transfers. CC outstanding = charges minus payments, all-time.",
     })
 
 
