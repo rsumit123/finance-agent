@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import {
-  LayoutDashboard, Receipt, Upload, ShoppingCart, Wallet, CreditCard, LogOut, Loader,
+  LayoutDashboard, Receipt, Upload, MessageCircle, Wallet, CreditCard, LogOut, Loader,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Dashboard from "./pages/Dashboard";
@@ -45,7 +45,7 @@ function ProtectedApp() {
           <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
           <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
           <NavLink to="/statements"><CreditCard size={20} /> Statements</NavLink>
-          <NavLink to="/advisor"><ShoppingCart size={20} /> Can I Buy?</NavLink>
+          <NavLink to="/advisor"><MessageCircle size={20} /> Ask AI</NavLink>
           <NavLink to="/budget"><Wallet size={20} /> Budget</NavLink>
         </div>
         <div style={{ marginTop: "auto", padding: "0 8px" }}>
