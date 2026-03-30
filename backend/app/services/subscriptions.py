@@ -111,15 +111,16 @@ def detect_subscriptions(db: Session, user_id: int) -> list[Subscription]:
         last_txn = max(txns, key=lambda t: t.date)
 
         # Estimate next expected date (roughly 30 days after last)
-        next_expected = last_txn.date + timedelta(days=30)
+        last_date = last_txn.date.date() if hasattr(last_txn.date, 'date') else last_txn.date
+        next_expected = last_date + timedelta(days=30)
 
         subscriptions.append(
             Subscription(
                 name=merchant,
                 amount=round(avg_amount, 2),
                 frequency="monthly",
-                last_charged=last_txn.date,
-                next_expected=next_expected if (next_expected.date() if hasattr(next_expected, 'date') else next_expected) > date.today() else None,
+                last_charged=last_date,
+                next_expected=next_expected if next_expected > date.today() else None,
                 total_spent=round(total_spent, 2),
                 occurrence_count=len(txns),
             )
