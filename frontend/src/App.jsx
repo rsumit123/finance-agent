@@ -73,6 +73,7 @@ function ProtectedApp() {
         <NavLink to="/" end><LayoutDashboard size={20} /> Home</NavLink>
         <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
         <NavLink to="/advisor"><MessageCircle size={20} /> Ask AI</NavLink>
+        <NavLink to="/statements"><CreditCard size={20} /> Cards</NavLink>
         <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
         <NavLink to="/account">
           {user.picture
