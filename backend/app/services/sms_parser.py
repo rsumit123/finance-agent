@@ -85,7 +85,7 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
         r"\bamazon.?voucher\b",
         r"\bpayzapp\b.*\bbill.?pay\b",        # PayZapp bill pay notifications
         r"\bvia\s+PayZapp\b",
-        r"https?://",                          # Messages with URLs are usually promos
+        # URL skip removed — too aggressive, catches legit Kotak/HDFC SMS with fraud links
         r"\bT&C\b",                            # Terms & conditions = promo
         r"\bcredit.?card.?XX\d{4}\b",          # "your Axis Bank Credit Card XX1088" — statement notif
         r"\bA/c\s+no\b",                       # Account number notification
@@ -102,7 +102,7 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
     # Remove "credit card" phrases first to avoid false credit detection
     body_no_cc = re.sub(r"\bcredit\s*card\b", "", body_text, flags=re.IGNORECASE)
     is_credit = bool(re.search(r"\bcredited\b|\breceived\b|\bcredit\b|\brefund\b", body_no_cc, re.IGNORECASE))
-    is_debit = bool(re.search(r"\bdebited\b|\bspent\b|\bdebit\b|\bpurchase\b|\bpaid\b|\bwithdraw|\byour txn\b", body_text, re.IGNORECASE))
+    is_debit = bool(re.search(r"\bdebited\b|\bspent\b|\bdebit\b|\bpurchase\b|\bpaid\b|\bwithdraw|\byour txn\b|\bSent Rs\b", body_text, re.IGNORECASE))
 
     if not is_debit and not is_credit:
         # Can't determine type, skip
@@ -124,9 +124,9 @@ def parse_sms(body: str, sender: str, sms_date: str = "", user_name: str = "") -
     # Skip if description is just "Bank Transaction" (generic, useless)
     if description.strip().lower() == "bank transaction":
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
-    # Skip if description is an email or UPI ID
+    # UPI IDs as descriptions — keep them but prefix for readability
     if re.match(r"^[\w.*]+@[\w.]+$", description.strip()):
-        return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}
+        description = f"UPI to {description.strip()}"
     # Skip if description starts with a date (bad parse)
     if re.match(r"^\d{2}/\w{3}/\d{4}", description.strip()):
         return {"expense": None, "balance": None, "account_hint": "", "bank": bank, "is_credit": False}

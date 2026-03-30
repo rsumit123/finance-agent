@@ -319,8 +319,9 @@ def _should_skip_library_parsed(msg: SmsMessage) -> bool:
         r"\bvouchers?\s+added\b",               # Voucher promos
         r"\bupto\s+rs\b.*\bvoucher",            # "Upto Rs.3550 Vouchers"
         r"\btransaction\s+reversed\b",           # Reversal notification (not a new txn)
-        r"\bhas been received towards your\b.*\bcredit card\b",  # CC payment confirmation (dupes bank debit)
+        r"\bhas been received (?:towards|on) your\b.*\bcredit card\b",  # CC payment confirmation (dupes bank debit)
         r"\bsuccessfully credited towards your\b.*\bcredit card\b",  # Same
+        r"\bpayment of rs\b.*\breceived on your\b.*\bcredit card\b",  # "Payment of Rs X has been received on your ICICI Bank Credit Card"
         r"\bbill\b.*\baccount\b.*\btel\b",      # BSNL landline bill notification
         r"\bincoming facility\b.*\bbarred\b",    # BSNL service barred
     ]
