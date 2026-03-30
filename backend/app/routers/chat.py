@@ -629,6 +629,22 @@ TOOL_EXECUTORS = {
 }
 
 
+# ── Chat logging ──────────────────────────────────────────────
+
+CHAT_LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+
+def _log_chat(user_id: int, entry: str):
+    """Append a log entry to the chat debug log."""
+    try:
+        os.makedirs(CHAT_LOG_DIR, exist_ok=True)
+        log_path = os.path.join(CHAT_LOG_DIR, f"chat_log_{user_id}.txt")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_path, "a") as f:
+            f.write(f"[{timestamp}] {entry}\n")
+    except Exception:
+        pass
+
+
 # ── OpenRouter (OpenAI-compatible) provider ───────────────────
 
 def _convert_tools_to_openai_format():
@@ -645,8 +661,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
 
     try:
         max_iterations = 8
-        for _ in range(max_iterations):
-            # Non-streaming call for tool use support
+        for iteration in range(max_iterations):
             resp = httpx.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -654,7 +669,8 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
                 timeout=60,
             )
             if resp.status_code != 200:
-                chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'OpenRouter error: {resp.status_code} {resp.text[:200]}'})}\n\n")
+                _log_chat(user_id, f"[OpenRouter error] {resp.status_code}: {resp.text[:500]}")
+                chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'OpenRouter error: {resp.status_code}'})}\n\n")
                 break
 
             data = resp.json()
@@ -662,9 +678,10 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
             msg = choice.get("message", {})
             finish = choice.get("finish_reason", "stop")
 
+            _log_chat(user_id, f"[OpenRouter iter {iteration}] finish={finish}, content={bool(msg.get('content'))}, tool_calls={len(msg.get('tool_calls', []))}")
+
             # Stream the text content
             if msg.get("content"):
-                # Send word by word for streaming feel
                 words = msg["content"].split(" ")
                 for i, word in enumerate(words):
                     chunk = word if i == 0 else " " + word
@@ -672,8 +689,16 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
 
             # Handle tool calls
             tool_calls = msg.get("tool_calls", [])
-            if tool_calls and finish == "tool_calls":
-                openai_messages.append(msg)
+            if tool_calls:
+                # Build the assistant message exactly as OpenAI expects
+                assistant_msg = {"role": "assistant", "content": msg.get("content") or None, "tool_calls": []}
+                for tc in tool_calls:
+                    assistant_msg["tool_calls"].append({
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["function"]["name"], "arguments": tc["function"]["arguments"]},
+                    })
+                openai_messages.append(assistant_msg)
 
                 for tc in tool_calls:
                     fn = tc.get("function", {})
@@ -684,9 +709,11 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
                         tool_input = {}
 
                     chunk_queue.put(f"data: {json.dumps({'type': 'tool_use', 'name': tool_name})}\n\n")
+                    _log_chat(user_id, f"[Tool call] {tool_name}({json.dumps(tool_input)})")
 
                     executor = TOOL_EXECUTORS.get(tool_name)
                     result = executor(db, user_id, tool_input) if executor else json.dumps({"error": f"Unknown tool: {tool_name}"})
+                    _log_chat(user_id, f"[Tool result] {result[:300]}")
 
                     openai_messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
                 continue
@@ -694,6 +721,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
                 break
 
     except Exception as e:
+        _log_chat(user_id, f"[OpenRouter exception] {str(e)}")
         chunk_queue.put(f"data: {json.dumps({'type': 'text', 'content': f'Error: {str(e)}'})}\n\n")
     finally:
         chunk_queue.put(None)
@@ -798,6 +826,8 @@ async def chat(
         if role in ("user", "assistant") and content:
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": req.message})
+
+    _log_chat(current_user.id, f"[User] {req.message}")
 
     system = SYSTEM_PROMPT.format(today=date.today().isoformat())
 
