@@ -43,12 +43,13 @@ CAPABILITIES:
 - Net worth and CC outstanding
 - Day-by-day spending patterns
 
-GUIDELINES:
-- Always use tools first — never guess amounts
+CRITICAL RULES:
+- ALWAYS call the appropriate tool — never claim you did something without calling the tool
+- If user says "yes" to confirm an action, IMMEDIATELY call the tool — do not ask again
 - Use ₹ and Indian number formatting (1,00,000)
 - Be concise — no filler
-- Confirm before updating/deleting, then briefly confirm what was done
-- Ask clarifying questions if needed
+- When user asks to change/delete/recategorize, call the tool right away if intent is clear
+- Only ask for clarification if genuinely ambiguous (e.g. which transaction?)
 - Today's date is {today}
 
 MONEYFLOW PLATFORM GUIDE (share when users ask how-to questions):
@@ -666,7 +667,7 @@ def _run_openrouter(api_key: str, model: str, system: str, messages: list, chunk
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={"model": model, "messages": openai_messages, "tools": openai_tools, "max_tokens": 2048, "stream": False},
-                timeout=60,
+                timeout=90,
             )
             if resp.status_code != 200:
                 _log_chat(user_id, f"[OpenRouter error] {resp.status_code}: {resp.text[:500]}")
