@@ -365,7 +365,7 @@ export default function Dashboard() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, opacity: item.name === "transfer" ? 0.5 : 1 }}>
                       <span style={{ fontSize: 13, textTransform: "capitalize", display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                        {item.name === "transfer" ? "Self-transfers (excluded from spend)" : item.name}
+                        {item.name === "transfer" ? "Self-transfers (excluded)" : item.name === "personal care" ? "Personal Care" : item.name.charAt(0).toUpperCase() + item.name.slice(1)}
                       </span>
                       <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                         {formatINR(item.value)}

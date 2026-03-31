@@ -424,7 +424,7 @@ export default function Expenses() {
                     <span style={{
                       fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4,
                       background: catColor + "22", color: catColor, textTransform: "capitalize",
-                    }}>{e.category}</span>
+                    }}>{CATEGORY_META[e.category]?.label || e.category}</span>
                     <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{e.payment_method.replace("_", " ")}</span>
                     {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
                     <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, fontWeight: 600, background: bankColor + "22", color: bankColor }}>{si.label}</span>
