@@ -144,6 +144,9 @@ def classify_category(description: str, source: str = "", user_name: str = "", u
     if "credit" in (source or "").lower() or "cc" in (source or "").lower():
         if any(kw in desc_lower for kw in ["payment", "mb payment"]):
             return "transfer"
+        # CC bill payment received: "your X credit card" as description
+        if "credit card" in desc_lower and any(kw in desc_lower for kw in ["your", "federal", "scapia", "axis", "hdfc", "icici"]):
+            return "transfer"
 
     # Kotak UPI format: "UPI/PersonName/RefId/..." — extract name
     upi_match = re.match(r"UPI/([^/]+)/\d+/", description)
