@@ -147,7 +147,13 @@ export default function Dashboard() {
     return (
       <div>
         <div className="page-header"><h1>Dashboard</h1></div>
-        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            {[1,2,3].map(i => <div key={i} className="loading-skeleton" style={{ flex: 1, height: 80 }} />)}
+          </div>
+          <div className="loading-skeleton" style={{ height: 200 }} />
+          <div className="loading-skeleton" style={{ height: 120 }} />
+        </div>
       </div>
     );
   }

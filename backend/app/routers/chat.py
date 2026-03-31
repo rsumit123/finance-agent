@@ -202,8 +202,29 @@ class ChatRequest(BaseModel):
 
 
 # Server-side conversation store (keyed by user_id)
-# Stores full message history including tool calls/results
 _conversations: dict[int, list[dict]] = {}
+
+# Rate limiting: {user_id: {date_str: count}}
+DAILY_MSG_LIMIT = 50
+_rate_limits: dict[int, dict[str, int]] = {}
+
+
+def _check_rate_limit(user_id: int) -> tuple[bool, int]:
+    """Check if user is within daily rate limit. Returns (allowed, remaining)."""
+    today = date.today().isoformat()
+    if user_id not in _rate_limits:
+        _rate_limits[user_id] = {}
+    # Clean old dates
+    _rate_limits[user_id] = {d: c for d, c in _rate_limits[user_id].items() if d == today}
+    count = _rate_limits[user_id].get(today, 0)
+    return count < DAILY_MSG_LIMIT, DAILY_MSG_LIMIT - count
+
+
+def _increment_rate_limit(user_id: int):
+    today = date.today().isoformat()
+    if user_id not in _rate_limits:
+        _rate_limits[user_id] = {}
+    _rate_limits[user_id][today] = _rate_limits[user_id].get(today, 0) + 1
 
 
 def _get_excluded_banks(db: Session, user_id: int) -> list[str]:
@@ -843,6 +864,19 @@ async def chat(
     # Clear conversation if requested
     if req.clear:
         _conversations.pop(uid, None)
+        if not req.message:
+            async def clear_stream():
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return StreamingResponse(clear_stream(), media_type="text/event-stream")
+
+    # Rate limit check
+    allowed, remaining = _check_rate_limit(uid)
+    if not allowed:
+        async def limit_stream():
+            yield f"data: {json.dumps({'type': 'text', 'content': 'You have reached the daily limit of 50 messages. Try again tomorrow.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return StreamingResponse(limit_stream(), media_type="text/event-stream")
+    _increment_rate_limit(uid)
 
     # Use server-side conversation (has full tool context)
     # Fall back to client history only if no server state exists

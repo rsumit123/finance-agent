@@ -372,7 +372,11 @@ export default function Expenses() {
 
       {/* Transaction list */}
       {loading ? (
-        <div className="card" style={{ textAlign: "center", padding: 48, color: "var(--text-dim)" }}>Loading...</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="loading-skeleton" style={{ height: 64, borderRadius: 10 }} />
+          ))}
+        </div>
       ) : (
       <>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -384,11 +388,11 @@ export default function Expenses() {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
                 <Receipt size={40} style={{ color: "var(--text-dim)", opacity: 0.5 }} />
                 <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>No transactions yet</div>
-                <p style={{ color: "var(--text-dim)", fontSize: 13, maxWidth: 280, lineHeight: 1.5 }}>
-                  Import from SMS, Gmail, or upload a statement
+                <p style={{ color: "var(--text-dim)", fontSize: 13, maxWidth: 300, lineHeight: 1.5 }}>
+                  Import your transactions from SMS, Gmail, or PDF statements. Go to Account → Import Data to get started.
                 </p>
                 <button onClick={() => navigate("/upload")} style={{ padding: "10px 20px", fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-                  Go to Import
+                  Import Data
                 </button>
               </div>
             )}

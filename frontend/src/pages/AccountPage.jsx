@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { LogOut, Shield, EyeOff, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { LogOut, Shield, EyeOff, X, Upload, ChevronRight } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getExcludedBanks, setExcludedBanks, getSources } from "../api/client";
 
 export default function AccountPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [excluded, setExcluded] = useState([]);
   const [allBanks, setAllBanks] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -62,6 +64,26 @@ export default function AccountPage() {
               <span style={{ fontSize: 11, color: "var(--green)" }}>Signed in with Google</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Import Data */}
+      <div className="card" style={{ marginBottom: 20, cursor: "pointer" }} onClick={() => navigate("/upload")}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: "rgba(99,102,241,0.1)", display: "flex",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Upload size={20} style={{ color: "var(--accent)" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Import Data</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>SMS, Gmail, PDF statements</div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: "var(--text-dim)" }} />
         </div>
       </div>
 

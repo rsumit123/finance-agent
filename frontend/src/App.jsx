@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import {
-  LayoutDashboard, Receipt, Upload, MessageCircle, Wallet, CreditCard, LogOut, Loader,
+  LayoutDashboard, Receipt, Upload, MessageCircle, Wallet, CreditCard, LogOut, Loader, Sparkles,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Dashboard from "./pages/Dashboard";
@@ -43,9 +43,9 @@ function ProtectedApp() {
         <div className="nav-links">
           <NavLink to="/" end><LayoutDashboard size={20} /> Dashboard</NavLink>
           <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
-          <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
-          <NavLink to="/statements"><CreditCard size={20} /> Statements</NavLink>
           <NavLink to="/advisor"><MessageCircle size={20} /> Ask AI</NavLink>
+          <NavLink to="/statements"><CreditCard size={20} /> Cards</NavLink>
+          <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
           <NavLink to="/budget"><Wallet size={20} /> Budget</NavLink>
         </div>
         <div style={{ marginTop: "auto", padding: "0 8px" }}>
@@ -72,9 +72,11 @@ function ProtectedApp() {
       <nav className="bottom-bar">
         <NavLink to="/" end><LayoutDashboard size={20} /> Home</NavLink>
         <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
-        <NavLink to="/advisor"><MessageCircle size={20} /> Ask AI</NavLink>
+        <NavLink to="/advisor" className="ai-tab">
+          <div className="ai-tab-icon"><Sparkles size={20} /></div>
+          Ask AI
+        </NavLink>
         <NavLink to="/statements"><CreditCard size={20} /> Cards</NavLink>
-        <NavLink to="/upload"><Upload size={20} /> Import</NavLink>
         <NavLink to="/account">
           {user.picture
             ? <img src={user.picture} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} referrerPolicy="no-referrer" />
