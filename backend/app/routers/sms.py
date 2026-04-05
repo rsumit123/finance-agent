@@ -18,7 +18,8 @@ from ..schemas import ExpenseCreate
 from ..services.sms_parser import parse_sms
 from ..services.tracker import create_expenses_bulk_dedup
 
-SMS_DUMP_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+# Use /app/data which is mounted as a volume (persists across container rebuilds)
+SMS_DUMP_DIR = "/app/data"
 os.makedirs(SMS_DUMP_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/api/sms", tags=["sms"])
@@ -324,6 +325,14 @@ def _should_skip_library_parsed(msg: SmsMessage) -> bool:
         r"\bpayment of rs\b.*\breceived on your\b.*\bcredit card\b",  # "Payment of Rs X has been received on your ICICI Bank Credit Card"
         r"\bbill\b.*\baccount\b.*\btel\b",      # BSNL landline bill notification
         r"\bincoming facility\b.*\bbarred\b",    # BSNL service barred
+        r"\bamazon\s+voucher\b",                 # "Get an Amazon voucher worth INR 500"
+        r"\brewards from\b.*\bspends\b",         # "rewards from Reliance, MakeMyTrip on spends"
+        r"\bcashback\b.*\bcredited\b",           # "cashback of INR X has been credited"
+        r"\bearn\b.*\bcashback\b",               # "Earn 1% cashback on..."
+        r"\bbill dated\b",                       # "Your JioHome bill dated 16-Mar"
+        r"\bbill has been sent\b",               # Bill notification
+        r"\bnach debit towards\b",               # NACH debit notification (not a direct debit SMS)
+        r"\bcongratulations\b.*\bcredited\b",    # "Congratulations! cashback credited"
     ]
     if any(re.search(pat, body) for pat in skip_patterns):
         return True

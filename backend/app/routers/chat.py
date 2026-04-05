@@ -659,7 +659,7 @@ TOOL_EXECUTORS = {
 
 # ── Chat logging ──────────────────────────────────────────────
 
-CHAT_LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+CHAT_LOG_DIR = "/app/data"
 
 def _log_chat(user_id: int, entry: str):
     """Append a log entry to the chat debug log."""
