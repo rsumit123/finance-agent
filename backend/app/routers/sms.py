@@ -524,14 +524,24 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
             parsed = json.loads(content)
             results = parsed.get("results", [])
 
+            matched = 0
             for r in results:
                 idx = r.get("index", -1)
                 if 0 <= idx < len(messages):
                     all_results[idx] = r
+                    matched += 1
+
+            expected = len(batch)
+            if matched < expected:
+                print(f"LLM SMS batch {batch_start}: got {matched}/{expected} results (missing {expected - matched})")
 
         except Exception as e:
-            print(f"LLM SMS parser exception: {e}")
+            print(f"LLM SMS parser exception (batch {batch_start}): {e}")
             return None
+
+    # Log overall stats
+    filled = sum(1 for r in all_results if r is not None)
+    print(f"LLM SMS parser: {filled}/{len(messages)} parsed, {len(messages) - filled} falling back to regex")
 
     return all_results
 
@@ -540,6 +550,7 @@ def _build_expenses_from_llm(
     messages: list[SmsMessage], llm_results: list[dict | None], user_name: str
 ) -> tuple[list[ExpenseCreate], list[dict], int]:
     """Convert LLM parse results into ExpenseCreate objects.
+    For missing LLM results (None), falls back to regex parser.
     Returns (expenses, balances, skipped_count)."""
     from ..parsers.categorizer import classify_category
 
@@ -548,7 +559,24 @@ def _build_expenses_from_llm(
     skipped = 0
 
     for i, result in enumerate(llm_results):
-        if result is None or not result.get("is_transaction", False):
+        # If LLM didn't return a result for this index, try regex fallback
+        if result is None:
+            msg = messages[i]
+            fallback = parse_sms(msg.body, msg.sender, msg.date, user_name=user_name)
+            if fallback["expense"]:
+                expenses.append(fallback["expense"])
+                if fallback["balance"] is not None:
+                    balances.append({
+                        "bank": fallback["bank"],
+                        "account_hint": fallback["account_hint"],
+                        "balance": fallback["balance"],
+                        "date": fallback["expense"].date,
+                    })
+            else:
+                skipped += 1
+            continue
+
+        if not result.get("is_transaction", False):
             skipped += 1
             continue
 
