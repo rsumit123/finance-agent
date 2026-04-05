@@ -53,7 +53,7 @@ def sync_sms(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Import SMS transactions. Accepts pre-parsed data from frontend."""
+    """Import SMS transactions. Tries LLM parser first, falls back to regex."""
     from ..parsers.categorizer import classify_category
 
     # Dump raw incoming SMS for debugging
@@ -67,77 +67,76 @@ def sync_sms(
     parsed_expenses = []
     balances_extracted = []
     skipped = 0
+    parse_method = "regex"
 
-    for msg in request.messages:
-        if msg.parsed and msg.parsed.amount > 0:
-            # Validate library-parsed data — skip false positives
-            if _should_skip_library_parsed(msg):
-                skipped += 1
-                continue
+    # Try LLM parser first
+    llm_results = _parse_sms_batch_llm(request.messages, user_name=current_user.name or "")
 
-            # Use pre-parsed data from transaction-sms-parser (frontend)
-            is_credit = msg.parsed.type == "credit"
-            amount = msg.parsed.amount
+    if llm_results is not None:
+        parse_method = "llm"
+        parsed_expenses, balances_extracted, skipped = _build_expenses_from_llm(
+            request.messages, llm_results, user_name=current_user.name or ""
+        )
+    else:
+        # Fallback: regex-based parsing (per-message)
+        for msg in request.messages:
+            if msg.parsed and msg.parsed.amount > 0:
+                if _should_skip_library_parsed(msg):
+                    skipped += 1
+                    continue
 
-            # Determine bank from sender
-            bank = _detect_bank_from_sender(msg.sender)
+                is_credit = msg.parsed.type == "credit"
+                amount = msg.parsed.amount
+                bank = _detect_bank_from_sender(msg.sender)
 
-            # Determine payment method
-            acct_type = msg.parsed.account_type.upper()
-            if acct_type == "CARD":
-                payment_method = "credit_card"
-            elif acct_type == "WALLET":
-                payment_method = "upi"
+                acct_type = msg.parsed.account_type.upper()
+                if acct_type == "CARD":
+                    payment_method = "credit_card"
+                elif acct_type == "WALLET":
+                    payment_method = "upi"
+                else:
+                    payment_method = "debit_card"
+
+                is_cc = acct_type == "CARD"
+                source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
+                txn_date = _parse_sms_date(msg.date) or datetime.now()
+                ref = msg.parsed.reference_id if msg.parsed.reference_id else f"sms:{msg.body[:150]}"
+
+                description = msg.parsed.merchant or msg.parsed.account_name or ""
+                if not description or description == "Bank Transaction":
+                    description = _extract_merchant_from_body(msg.body) or "Bank Transaction"
+
+                expense = ExpenseCreate(
+                    amount=-amount if is_credit else amount,
+                    category=classify_category(description, source=source, user_name=current_user.name or ""),
+                    payment_method=payment_method,
+                    description=description[:200],
+                    date=txn_date,
+                    source=source,
+                    reference_id=ref,
+                )
+                parsed_expenses.append(expense)
+
+                if msg.parsed.balance is not None:
+                    balances_extracted.append({
+                        "bank": bank or "unknown",
+                        "account_hint": msg.parsed.account_number or "",
+                        "balance": msg.parsed.balance,
+                        "date": txn_date,
+                    })
             else:
-                payment_method = "debit_card"
-
-            # Build source tag
-            is_cc = acct_type == "CARD"
-            source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
-
-            # Parse date
-            txn_date = _parse_sms_date(msg.date) or datetime.now()
-
-            # Store original SMS in reference_id
-            ref = msg.parsed.reference_id if msg.parsed.reference_id else f"sms:{msg.body[:150]}"
-
-            description = msg.parsed.merchant or msg.parsed.account_name or ""
-            # If library didn't extract merchant, try to extract from SMS body
-            if not description or description == "Bank Transaction":
-                description = _extract_merchant_from_body(msg.body) or "Bank Transaction"
-
-            expense = ExpenseCreate(
-                amount=-amount if is_credit else amount,
-                category=classify_category(description, source=source, user_name=current_user.name or ""),
-                payment_method=payment_method,
-                description=description[:200],
-                date=txn_date,
-                source=source,
-                reference_id=ref,
-            )
-            parsed_expenses.append(expense)
-
-            if msg.parsed.balance is not None:
-                balances_extracted.append({
-                    "bank": bank or "unknown",
-                    "account_hint": msg.parsed.account_number or "",
-                    "balance": msg.parsed.balance,
-                    "date": txn_date,
-                })
-        else:
-            # Fallback: use backend parser
-            result = parse_sms(msg.body, msg.sender, msg.date, user_name=current_user.name or "")
-            if result["expense"]:
-                parsed_expenses.append(result["expense"])
-            if result["balance"] is not None:
-                balances_extracted.append({
-                    "bank": result["bank"],
-                    "account_hint": result["account_hint"],
-                    "balance": result["balance"],
-                    "date": result["expense"].date if result["expense"] else datetime.now(),
-                })
-            if not result["expense"] and result["balance"] is None:
-                skipped += 1
+                result = parse_sms(msg.body, msg.sender, msg.date, user_name=current_user.name or "")
+                if result["expense"]:
+                    parsed_expenses.append(result["expense"])
+                if result["balance"] is not None:
+                    balances_extracted.append({
+                        "bank": result["bank"],
+                        "account_hint": result["account_hint"],
+                        "balance": result["balance"],
+                        "date": result["expense"].date if result["expense"] else datetime.now(),
+                    })
+                if not result["expense"] and result["balance"] is None:
+                    skipped += 1
 
     # Dedup and save transactions
     imported_count = 0
@@ -180,6 +179,7 @@ def sync_sms(
         "skipped": skipped,
         "messages_processed": len(request.messages),
         "balances_extracted": balances_saved,
+        "parse_method": parse_method,
     }
 
 
@@ -425,3 +425,179 @@ def _parse_sms_date(date_str: str):
     except ValueError:
         pass
     return None
+
+
+# ── LLM-based SMS Parser ──────────────────────────────────────
+
+LLM_SMS_SYSTEM_PROMPT = """You are an Indian bank SMS parser. Today is {today}. The user's name is "{user_name}".
+
+Analyze each SMS and determine if it is a REAL financial transaction (money actually debited or credited).
+
+REAL transactions: actual debits, actual credits, UPI payments, card spends, NEFT/IMPS transfers, ATM withdrawals, salary credits, refunds.
+
+NOT transactions (mark is_transaction=false):
+- OTPs, verification codes
+- Balance inquiries, available limit info
+- Payment DUE reminders, upcoming auto-debit NOTIFICATIONS
+- Promotional offers (vouchers, cashback offers, rewards)
+- Card/account info updates, PIN generated, statement ready
+- Failed/declined transactions
+- Bill NOTIFICATIONS (bill generated, bill sent to email) vs actual bill PAYMENTS
+- Mandate creation/revocation alerts
+- Insurance/policy notifications
+- Marketing SMS
+- Credit limit changes
+
+IMPORTANT:
+- If the SMS contains the user's name "{user_name}" as the recipient, mark category as "transfer"
+- CC bill payment confirmations (money received ON credit card) = mark category as "transfer"
+- For "Sent Rs.X from Bank to VPA" format: this IS a real debit transaction
+- Amount should always be positive. Use "type" field to indicate debit/credit.
+- Extract merchant name from the SMS (clean up UPI IDs into readable names)
+
+Return JSON: {{"results": [...]}}
+Each result: {{"index": int, "is_transaction": bool, "type": "debit"|"credit", "amount": float, "merchant": "string", "category": "string", "ref_id": "string", "account_hint": "string", "balance": float|null, "payment_method": "string"}}
+
+Valid categories: food, groceries, transport, entertainment, shopping, bills, subscriptions, health, education, rent, home, personal care, investment, emi, transfer, lent, borrowed, atm, salary, other
+Valid payment_methods: credit_card, debit_card, upi, neft, imps, cash"""
+
+
+def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> list[dict] | None:
+    """Parse SMS batch using LLM. Returns list of parsed results or None on failure."""
+    import httpx
+
+    if os.getenv("LLM_SMS_PARSER", "true").lower() == "false":
+        return None
+
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return None
+
+    model = os.getenv("LLM_SMS_PARSER_MODEL", "google/gemini-2.0-flash-001")
+    today = datetime.now().strftime("%Y-%m-%d")
+    system = LLM_SMS_SYSTEM_PROMPT.format(today=today, user_name=user_name)
+
+    all_results = [None] * len(messages)
+    batch_size = 30
+
+    for batch_start in range(0, len(messages), batch_size):
+        batch = messages[batch_start:batch_start + batch_size]
+
+        # Format SMS for the LLM
+        sms_text = ""
+        for i, msg in enumerate(batch):
+            idx = batch_start + i
+            sender = (msg.sender or "unknown")[:20]
+            date_str = msg.date or ""
+            # Try to format date readably
+            try:
+                ts = int(date_str) / 1000
+                from datetime import datetime as dt
+                date_fmt = dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+            except (ValueError, TypeError, OSError):
+                date_fmt = date_str[:16] if date_str else "unknown"
+
+            sms_text += f"\n[{idx}] Sender: {sender} | Date: {date_fmt}\n{(msg.body or '')[:300]}\n"
+
+        try:
+            resp = httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": f"Parse these bank SMS messages:\n{sms_text}"},
+                    ],
+                    "max_tokens": 4096,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=90,
+            )
+
+            if resp.status_code != 200:
+                print(f"LLM SMS parser error: {resp.status_code} {resp.text[:200]}")
+                return None
+
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = json.loads(content)
+            results = parsed.get("results", [])
+
+            for r in results:
+                idx = r.get("index", -1)
+                if 0 <= idx < len(messages):
+                    all_results[idx] = r
+
+        except Exception as e:
+            print(f"LLM SMS parser exception: {e}")
+            return None
+
+    return all_results
+
+
+def _build_expenses_from_llm(
+    messages: list[SmsMessage], llm_results: list[dict | None], user_name: str
+) -> tuple[list[ExpenseCreate], list[dict], int]:
+    """Convert LLM parse results into ExpenseCreate objects.
+    Returns (expenses, balances, skipped_count)."""
+    from ..parsers.categorizer import classify_category
+
+    expenses = []
+    balances = []
+    skipped = 0
+
+    for i, result in enumerate(llm_results):
+        if result is None or not result.get("is_transaction", False):
+            skipped += 1
+            continue
+
+        msg = messages[i]
+        amount = result.get("amount", 0)
+        if not amount or amount <= 0:
+            skipped += 1
+            continue
+
+        is_credit = result.get("type", "debit") == "credit"
+        bank = _detect_bank_from_sender(msg.sender)
+        merchant = result.get("merchant", "") or ""
+
+        # Determine source tag
+        pm = result.get("payment_method", "debit_card")
+        is_cc = pm == "credit_card"
+        source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
+
+        # Parse date
+        txn_date = _parse_sms_date(msg.date) or datetime.now()
+
+        # Reference ID
+        ref_id = result.get("ref_id", "")
+        ref = ref_id if ref_id else f"sms:{msg.body[:150]}"
+
+        # Category — use LLM's category but let user rules override
+        llm_cat = result.get("category", "other")
+        # Apply user-specific rules via categorizer (might override LLM)
+        rule_cat = classify_category(merchant, source=source, user_name=user_name)
+        category = rule_cat if rule_cat != "other" else llm_cat
+
+        expenses.append(ExpenseCreate(
+            amount=-amount if is_credit else amount,
+            category=category,
+            payment_method=pm,
+            description=merchant[:200] if merchant else "Bank Transaction",
+            date=txn_date,
+            source=source,
+            reference_id=ref,
+        ))
+
+        # Balance extraction
+        balance = result.get("balance")
+        if balance is not None:
+            balances.append({
+                "bank": bank or "unknown",
+                "account_hint": result.get("account_hint", ""),
+                "balance": balance,
+                "date": txn_date,
+            })
+
+    return expenses, balances, skipped

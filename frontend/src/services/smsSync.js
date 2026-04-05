@@ -1,19 +1,18 @@
 /**
- * SMS sync service — reads bank SMS, parses with transaction-sms-parser,
- * and sends structured transactions to backend.
+ * SMS sync service — reads bank SMS from device and sends raw messages
+ * to backend for LLM-powered parsing.
  * Only works on native Capacitor platform (Android).
  */
 
 import { Capacitor } from "@capacitor/core";
-import { getTransactionInfo } from "transaction-sms-parser";
 
-// Bank sender ID patterns
+// Bank sender ID patterns (TRAI suffix is primary, these are fallback)
 const BANK_SENDER_PATTERNS = [
   "HDFC", "AXIS", "SBI", "KOTAK", "SCAPIA", "ICICI",
   "FED", "FEDBK", "FEDBNK", "SCPFED", "FEDSCP",
   "BOB", "BARODA", "PNB", "IDFC", "YES", "INDUS",
   "CITI", "HSBC", "STAN", "NIYO", "UNI", "SLICE", "PAYTM",
-  "CANBNK", "IOB", "BOBIBN", "UNIONB",
+  "CANBNK", "IOB", "BOBIBN", "UNIONB", "KBLBNK",
 ];
 
 export function isSmsAvailable() {
@@ -21,7 +20,8 @@ export function isSmsAvailable() {
 }
 
 /**
- * Read bank SMS, parse locally with transaction-sms-parser, send to backend.
+ * Read bank SMS and send raw messages to backend for parsing.
+ * Backend uses LLM (Gemini Flash) with regex fallback.
  */
 export async function syncSmsMessages(api, daysBack = 90) {
   if (!Capacitor.isNativePlatform()) return null;
@@ -54,69 +54,26 @@ export async function syncSmsMessages(api, daysBack = 90) {
     // 2. Known bank sender ID patterns as fallback
     const bankMessages = messages.filter((msg) => {
       const sender = (msg.address || "").toUpperCase();
-      // TRAI mandated suffix (since May 2025): XX-HEADER-T or XX-HEADER-S
       if (sender.endsWith("-T") || sender.endsWith("-S")) return true;
-      // Fallback: check against known bank patterns
       return BANK_SENDER_PATTERNS.some((pat) => sender.includes(pat));
     });
 
     if (bankMessages.length === 0) {
-      return { imported: 0, duplicates: 0, messages_processed: 0, balances_extracted: 0, total_sms: messages.length, bank_sms: 0, parsed: 0 };
+      return { imported: 0, duplicates: 0, messages_processed: 0, balances_extracted: 0, total_sms: messages.length, bank_sms: 0 };
     }
 
-    // Parse each SMS locally using transaction-sms-parser
-    // If library can't parse it, send raw to backend for custom parsing
-    const parsedMessages = [];
-    let libraryParsed = 0;
-    let fallbackCount = 0;
+    // Send raw SMS to backend — LLM parses on server side
+    const rawMessages = bankMessages.map((msg) => ({
+      body: msg.body || "",
+      sender: msg.address || "",
+      date: msg.date ? String(msg.date) : "",
+    }));
 
-    for (const msg of bankMessages) {
-      const msgData = {
-        body: msg.body || "",
-        sender: msg.address || "",
-        date: msg.date ? String(msg.date) : "",
-      };
-
-      try {
-        const info = getTransactionInfo(msg.body || "");
-
-        if (info?.transaction?.type && info?.transaction?.amount) {
-          // Library parsed it successfully
-          msgData.parsed = {
-            type: info.transaction.type,
-            amount: parseFloat(info.transaction.amount.replace(/,/g, "")),
-            merchant: info.transaction.merchant || "",
-            reference_id: info.transaction.referenceNo || "",
-            account_type: info.account?.type || "",
-            account_number: info.account?.number || "",
-            account_name: info.account?.name || "",
-            balance: info.balance?.available ? parseFloat(info.balance.available.replace(/,/g, "")) : null,
-          };
-          libraryParsed++;
-        } else {
-          fallbackCount++;
-        }
-      } catch {
-        fallbackCount++;
-      }
-
-      // Always send — backend will try custom parser as fallback
-      parsedMessages.push(msgData);
-    }
-
-    if (parsedMessages.length === 0) {
-      return { imported: 0, duplicates: 0, messages_processed: 0, balances_extracted: 0, total_sms: messages.length, bank_sms: 0, parsed: 0 };
-    }
-
-    // Send ALL bank SMS to backend — library-parsed ones have .parsed field,
-    // others will be parsed by backend's custom parser
-    const response = await api.post("/api/sms/sync", { messages: parsedMessages });
+    const response = await api.post("/api/sms/sync", { messages: rawMessages });
     return {
       ...response.data,
       total_sms: messages.length,
       bank_sms: bankMessages.length,
-      library_parsed: libraryParsed,
-      fallback_parsed: fallbackCount,
     };
   } catch (error) {
     console.error("SMS sync error:", error);
