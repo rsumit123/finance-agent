@@ -89,6 +89,10 @@ CATEGORY_KEYWORDS = {
     ],
     "salary": [
         "salary", "sal credit", "payroll", "think workforce",
+        "mndllpsal", "salf", "salj", "salm", "saloct", "salnov", "saldec",
+        "saljan", "salfeb", "salmar", "salapr", "salmay", "saljun", "saljul",
+        "salaug", "salsep", "salaugust",
+        "itdt", "tax refund", "it refund", "income tax",
     ],
     "transfer": [
         "transfer to self", "own account",
