@@ -478,7 +478,7 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
     system = LLM_SMS_SYSTEM_PROMPT.format(today=today, user_name=user_name)
 
     all_results = [None] * len(messages)
-    batch_size = 30
+    batch_size = 50
 
     for batch_start in range(0, len(messages), batch_size):
         batch = messages[batch_start:batch_start + batch_size]
