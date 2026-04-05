@@ -480,23 +480,19 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
     all_results = [None] * len(messages)
     batch_size = 50
 
-    for batch_start in range(0, len(messages), batch_size):
-        batch = messages[batch_start:batch_start + batch_size]
-
-        # Format SMS for the LLM
+    def _call_llm(indices_to_parse):
+        """Send a batch of SMS indices to LLM. Returns number of results received."""
         sms_text = ""
-        for i, msg in enumerate(batch):
-            idx = batch_start + i
+        for idx in indices_to_parse:
+            msg = messages[idx]
             sender = (msg.sender or "unknown")[:20]
             date_str = msg.date or ""
-            # Try to format date readably
             try:
                 ts = int(date_str) / 1000
                 from datetime import datetime as dt
                 date_fmt = dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
             except (ValueError, TypeError, OSError):
                 date_fmt = date_str[:16] if date_str else "unknown"
-
             sms_text += f"\n[{idx}] Sender: {sender} | Date: {date_fmt}\n{(msg.body or '')[:300]}\n"
 
         try:
@@ -509,18 +505,30 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
                         {"role": "system", "content": system},
                         {"role": "user", "content": f"Parse these bank SMS messages:\n{sms_text}"},
                     ],
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                     "response_format": {"type": "json_object"},
                 },
                 timeout=90,
             )
 
             if resp.status_code != 200:
-                print(f"LLM SMS parser error: {resp.status_code} {resp.text[:200]}")
-                return None
+                print(f"LLM SMS batch error: {resp.status_code} {resp.text[:200]}")
+                return 0
 
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # Try to fix common JSON issues (trailing commas, truncated)
+            content = content.strip()
+            if not content.endswith("}"):
+                # Truncated — try to salvage
+                last_brace = content.rfind("}")
+                if last_brace > 0:
+                    content = content[:last_brace + 1]
+                    # Close the array if needed
+                    if '"results"' in content and content.count("[") > content.count("]"):
+                        content = content.rstrip().rstrip(",") + "]}"
+
             parsed = json.loads(content)
             results = parsed.get("results", [])
 
@@ -530,18 +538,32 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
                 if 0 <= idx < len(messages):
                     all_results[idx] = r
                     matched += 1
-
-            expected = len(batch)
-            if matched < expected:
-                print(f"LLM SMS batch {batch_start}: got {matched}/{expected} results (missing {expected - matched})")
+            return matched
 
         except Exception as e:
-            print(f"LLM SMS parser exception (batch {batch_start}): {e}")
-            return None
+            print(f"LLM SMS batch exception: {e}")
+            return 0
 
-    # Log overall stats
+    # Pass 1: Process all SMS in batches
+    for batch_start in range(0, len(messages), batch_size):
+        batch_indices = list(range(batch_start, min(batch_start + batch_size, len(messages))))
+        matched = _call_llm(batch_indices)
+        print(f"LLM SMS pass 1 batch {batch_start}: {matched}/{len(batch_indices)}")
+
+    # Pass 2: Retry any missed indices in smaller batches
+    missed = [i for i in range(len(messages)) if all_results[i] is None]
+    if missed:
+        print(f"LLM SMS pass 2: retrying {len(missed)} missed SMS")
+        retry_batch_size = 15  # Smaller batches for reliability
+        for retry_start in range(0, len(missed), retry_batch_size):
+            retry_indices = missed[retry_start:retry_start + retry_batch_size]
+            matched = _call_llm(retry_indices)
+            print(f"LLM SMS pass 2 retry: {matched}/{len(retry_indices)}")
+
+    # Final stats
     filled = sum(1 for r in all_results if r is not None)
-    print(f"LLM SMS parser: {filled}/{len(messages)} parsed, {len(messages) - filled} falling back to regex")
+    still_missing = len(messages) - filled
+    print(f"LLM SMS final: {filled}/{len(messages)} parsed, {still_missing} falling back to regex")
 
     return all_results
 
