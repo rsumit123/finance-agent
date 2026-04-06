@@ -77,6 +77,17 @@ def sync_sms(
         parsed_expenses, balances_extracted, skipped = _build_expenses_from_llm(
             request.messages, llm_results, user_name=current_user.name or ""
         )
+        # Debug: check if salary was built
+        salary_exps = [e for e in parsed_expenses if e.category == "salary" or "WORKFORCE" in (e.description or "").upper()]
+        if salary_exps:
+            print(f"DEBUG: {len(salary_exps)} salary expenses built: {[(e.amount, e.description[:30]) for e in salary_exps]}")
+        else:
+            # Check if salary SMS was in the dump
+            salary_indices = [i for i, m in enumerate(request.messages) if "225000" in (m.body or "") or "WORKFORCE" in (m.body or "").upper()]
+            if salary_indices:
+                print(f"DEBUG: Salary SMS at indices {salary_indices} but NO salary expense built!")
+                for si in salary_indices:
+                    print(f"  LLM result for [{si}]: {llm_results[si]}")
     else:
         # Fallback: regex-based parsing (per-message)
         for msg in request.messages:
@@ -606,6 +617,9 @@ def _build_expenses_from_llm(
         amount = result.get("amount", 0)
         if not amount or amount <= 0:
             skipped += 1
+            # Debug: log skipped transactions with large amounts in body
+            if "225000" in (msg.body or "") or "WORKFORCE" in (msg.body or "").upper():
+                print(f"DEBUG: Salary SMS at index {i} SKIPPED — amount={amount}, result={result}")
             continue
 
         is_credit = result.get("type", "debit") == "credit"
