@@ -614,64 +614,62 @@ def _build_expenses_from_llm(
             continue
 
         try:
-          msg = messages[i]
-          amount = result.get("amount", 0)
-          if not amount or amount <= 0:
-            skipped += 1
-            # Debug: log skipped transactions with large amounts in body
-            if "225000" in (msg.body or "") or "WORKFORCE" in (msg.body or "").upper():
-                print(f"DEBUG: Salary SMS at index {i} SKIPPED — amount={amount}, result={result}")
-            continue
+            msg = messages[i]
+            amount = result.get("amount", 0)
+            if not amount or amount <= 0:
+                skipped += 1
+                continue
 
-        is_credit = (result.get("type") or "debit") == "credit"
-        bank = _detect_bank_from_sender(msg.sender)
-        merchant = result.get("merchant") or ""
+            is_credit = (result.get("type") or "debit") == "credit"
+            bank = _detect_bank_from_sender(msg.sender)
+            merchant = result.get("merchant") or ""
 
-        # Determine source tag
-        pm = result.get("payment_method") or "debit_card"
-        is_cc = pm == "credit_card"
-        source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
+            # Determine source tag
+            pm = result.get("payment_method") or "debit_card"
+            is_cc = pm == "credit_card"
+            source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
 
-        # Parse date
-        txn_date = _parse_sms_date(msg.date) or datetime.now()
+            # Parse date
+            txn_date = _parse_sms_date(msg.date) or datetime.now()
 
-        # Reference ID
-        ref_id = result.get("ref_id") or ""
-        ref = ref_id if ref_id else f"sms:{msg.body[:150]}"
+            # Reference ID
+            ref_id = result.get("ref_id") or ""
+            ref = ref_id if ref_id else f"sms:{msg.body[:150]}"
 
-        # Category — use LLM's category but let user rules override
-        llm_cat = result.get("category") or "other"
-        # Apply user-specific rules via categorizer (might override LLM)
-        rule_cat = classify_category(merchant, source=source, user_name=user_name)
-        category = rule_cat if rule_cat != "other" else llm_cat
+            # Category — use LLM's category but let user rules override
+            llm_cat = result.get("category") or "other"
+            rule_cat = classify_category(merchant, source=source, user_name=user_name)
+            category = rule_cat if rule_cat != "other" else llm_cat
 
-        expenses.append(ExpenseCreate(
-            amount=-amount if is_credit else amount,
-            category=category,
-            payment_method=pm,
-            description=merchant[:200] if merchant else "Bank Transaction",
-            date=txn_date,
-            source=source,
-            reference_id=ref,
-        ))
+            expenses.append(ExpenseCreate(
+                amount=-amount if is_credit else amount,
+                category=category,
+                payment_method=pm,
+                description=merchant[:200] if merchant else "Bank Transaction",
+                date=txn_date,
+                source=source,
+                reference_id=ref,
+            ))
 
-        # Balance extraction
-        balance = result.get("balance")
-        if balance is not None:
-            balances.append({
-                "bank": bank or "unknown",
-                "account_hint": result.get("account_hint") or "",
-                "balance": balance,
-                "date": txn_date,
-            })
+            # Balance extraction
+            balance = result.get("balance")
+            if balance is not None:
+                balances.append({
+                    "bank": bank or "unknown",
+                    "account_hint": result.get("account_hint") or "",
+                    "balance": balance,
+                    "date": txn_date,
+                })
         except Exception as e:
             print(f"LLM build error at index {i}: {e}")
-            # Try regex fallback for this message
-            msg = messages[i]
-            fallback = parse_sms(msg.body, msg.sender, msg.date, user_name=user_name)
-            if fallback["expense"]:
-                expenses.append(fallback["expense"])
-            else:
+            try:
+                msg = messages[i]
+                fallback = parse_sms(msg.body, msg.sender, msg.date, user_name=user_name)
+                if fallback["expense"]:
+                    expenses.append(fallback["expense"])
+                else:
+                    skipped += 1
+            except Exception:
                 skipped += 1
 
     return expenses, balances, skipped
