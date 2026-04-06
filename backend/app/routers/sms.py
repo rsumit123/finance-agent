@@ -460,11 +460,13 @@ NOT transactions (mark is_transaction=false):
 - Credit limit changes
 
 IMPORTANT:
-- If the SMS contains the user's name "{user_name}" as the recipient, mark category as "transfer"
-- CC bill payment confirmations (money received ON credit card) = mark category as "transfer"
-- For "Sent Rs.X from Bank to VPA" format: this IS a real debit transaction
+- "transfer" category is ONLY for: transfers between the user's OWN accounts (self-transfers),
+  CC bill payments, or transactions where the recipient name EXACTLY matches "{user_name}".
+  Do NOT mark payments to other people as "transfer" — those are real expenses ("other" or appropriate category).
+- CC bill payment confirmations (money received ON credit card) = category "transfer"
+- For "Sent Rs.X from Bank to VPA" format: this IS a real debit transaction, categorize by merchant/payee name
 - Amount should always be positive. Use "type" field to indicate debit/credit.
-- Extract merchant name from the SMS (clean up UPI IDs into readable names)
+- Extract merchant name from the SMS. For UPI VPAs like "name@bank", extract the name part as merchant.
 
 Return JSON: {{"results": [...]}}
 Each result: {{"index": int, "is_transaction": bool, "type": "debit"|"credit", "amount": float, "merchant": "string", "category": "string", "ref_id": "string", "account_hint": "string", "balance": float|null, "payment_method": "string"}}
@@ -668,6 +670,13 @@ def _build_expenses_from_llm(
 
             # Category — use LLM's category but let user rules override
             llm_cat = result.get("category") or "other"
+            # Sanitize: LLM sometimes returns "transfer" for regular person payments
+            # Only keep "transfer" if description actually contains user's name
+            if llm_cat == "transfer" and user_name:
+                name_lower = user_name.lower()
+                desc_lower = (merchant or "").lower()
+                if name_lower not in desc_lower and not any(kw in desc_lower for kw in ["credit card", "cc payment", "creditcard"]):
+                    llm_cat = "other"
             rule_cat = classify_category(merchant, source=source, user_name=user_name)
             category = rule_cat if rule_cat != "other" else llm_cat
 
