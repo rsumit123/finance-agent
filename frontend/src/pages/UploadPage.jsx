@@ -5,6 +5,10 @@ import { isSmsAvailable, syncSmsMessages } from "../services/smsSync";
 import { apiInstance } from "../api/client";
 import { Capacitor } from "@capacitor/core";
 
+// Global SMS sync state — survives component unmount/remount
+let _smsSyncPromise = null;
+let _smsSyncResult = null;
+
 function formatINR(n) {
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 }
@@ -40,11 +44,30 @@ export default function UploadPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  // SMS state
+  // SMS state — picks up in-flight sync if navigated away and back
   const [smsAvailable] = useState(isSmsAvailable());
-  const [smsSyncing, setSmsSyncing] = useState(false);
-  const [smsResult, setSmsResult] = useState(null);
+  const [smsSyncing, setSmsSyncing] = useState(!!_smsSyncPromise);
+  const [smsResult, setSmsResult] = useState(_smsSyncResult);
   const [smsLastSync, setSmsLastSync] = useState(localStorage.getItem("sms_last_sync") || null);
+
+  // Re-attach to in-flight sync on mount
+  useEffect(() => {
+    if (_smsSyncPromise && !_smsSyncResult) {
+      setSmsSyncing(true);
+      _smsSyncPromise.then((result) => {
+        _smsSyncResult = result;
+        _smsSyncPromise = null;
+        setSmsResult(result);
+        setSmsSyncing(false);
+        if (result && !result.error) {
+          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+          localStorage.setItem("sms_last_sync", now);
+          setSmsLastSync(now);
+          refreshAll();
+        }
+      });
+    }
+  }, []);
 
   const refreshAll = () => {
     setGmailLoading(true);
@@ -184,21 +207,30 @@ export default function UploadPage() {
   };
 
   const handleSmsSync = async () => {
+    if (_smsSyncPromise) return; // Already syncing
     setSmsSyncing(true);
     setSmsResult(null);
-    try {
-      const result = await syncSmsMessages(apiInstance, 90);
-      setSmsResult(result);
-      if (result && !result.error) {
-        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-        localStorage.setItem("sms_last_sync", now);
-        setSmsLastSync(now);
-        refreshAll();
-      }
-    } catch (err) {
-      setSmsResult({ error: err.message || "SMS sync failed" });
-    } finally {
-      setSmsSyncing(false);
+    _smsSyncResult = null;
+
+    _smsSyncPromise = syncSmsMessages(apiInstance, 90).then((result) => {
+      _smsSyncResult = result;
+      _smsSyncPromise = null;
+      return result;
+    }).catch((err) => {
+      const result = { error: err.message || "SMS sync failed" };
+      _smsSyncResult = result;
+      _smsSyncPromise = null;
+      return result;
+    });
+
+    const result = await _smsSyncPromise;
+    setSmsResult(result);
+    setSmsSyncing(false);
+    if (result && !result.error) {
+      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+      localStorage.setItem("sms_last_sync", now);
+      setSmsLastSync(now);
+      refreshAll();
     }
   };
 
