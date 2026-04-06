@@ -613,21 +613,22 @@ def _build_expenses_from_llm(
             skipped += 1
             continue
 
-        msg = messages[i]
-        amount = result.get("amount", 0)
-        if not amount or amount <= 0:
+        try:
+          msg = messages[i]
+          amount = result.get("amount", 0)
+          if not amount or amount <= 0:
             skipped += 1
             # Debug: log skipped transactions with large amounts in body
             if "225000" in (msg.body or "") or "WORKFORCE" in (msg.body or "").upper():
                 print(f"DEBUG: Salary SMS at index {i} SKIPPED — amount={amount}, result={result}")
             continue
 
-        is_credit = result.get("type", "debit") == "credit"
+        is_credit = (result.get("type") or "debit") == "credit"
         bank = _detect_bank_from_sender(msg.sender)
-        merchant = result.get("merchant", "") or ""
+        merchant = result.get("merchant") or ""
 
         # Determine source tag
-        pm = result.get("payment_method", "debit_card")
+        pm = result.get("payment_method") or "debit_card"
         is_cc = pm == "credit_card"
         source = f"sms_{bank}_{'cc' if is_cc else 'bank'}" if bank else "sms_unknown"
 
@@ -635,11 +636,11 @@ def _build_expenses_from_llm(
         txn_date = _parse_sms_date(msg.date) or datetime.now()
 
         # Reference ID
-        ref_id = result.get("ref_id", "")
+        ref_id = result.get("ref_id") or ""
         ref = ref_id if ref_id else f"sms:{msg.body[:150]}"
 
         # Category — use LLM's category but let user rules override
-        llm_cat = result.get("category", "other")
+        llm_cat = result.get("category") or "other"
         # Apply user-specific rules via categorizer (might override LLM)
         rule_cat = classify_category(merchant, source=source, user_name=user_name)
         category = rule_cat if rule_cat != "other" else llm_cat
@@ -659,9 +660,18 @@ def _build_expenses_from_llm(
         if balance is not None:
             balances.append({
                 "bank": bank or "unknown",
-                "account_hint": result.get("account_hint", ""),
+                "account_hint": result.get("account_hint") or "",
                 "balance": balance,
                 "date": txn_date,
             })
+        except Exception as e:
+            print(f"LLM build error at index {i}: {e}")
+            # Try regex fallback for this message
+            msg = messages[i]
+            fallback = parse_sms(msg.body, msg.sender, msg.date, user_name=user_name)
+            if fallback["expense"]:
+                expenses.append(fallback["expense"])
+            else:
+                skipped += 1
 
     return expenses, balances, skipped
