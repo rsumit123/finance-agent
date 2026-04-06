@@ -491,8 +491,11 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
     all_results = [None] * len(messages)
     batch_size = 50
 
-    def _call_llm(indices_to_parse):
-        """Send a batch of SMS indices to LLM. Returns number of results received."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _call_llm(indices_to_parse, attempt=1):
+        """Send a batch of SMS indices to LLM. Returns (indices, matched_count)."""
         sms_text = ""
         for idx in indices_to_parse:
             msg = messages[idx]
@@ -506,70 +509,97 @@ def _parse_sms_batch_llm(messages: list[SmsMessage], user_name: str = "") -> lis
                 date_fmt = date_str[:16] if date_str else "unknown"
             sms_text += f"\n[{idx}] Sender: {sender} | Date: {date_fmt}\n{(msg.body or '')[:300]}\n"
 
-        try:
-            resp = httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": f"Parse these bank SMS messages:\n{sms_text}"},
-                    ],
-                    "max_tokens": 8192,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=90,
-            )
+        max_retries = 3
+        for retry in range(max_retries):
+            try:
+                resp = httpx.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": f"Parse these bank SMS messages:\n{sms_text}"},
+                        ],
+                        "max_tokens": 8192,
+                        "response_format": {"type": "json_object"},
+                    },
+                    timeout=90,
+                )
 
-            if resp.status_code != 200:
-                print(f"LLM SMS batch error: {resp.status_code} {resp.text[:200]}")
-                return 0
+                # Rate limited — wait and retry
+                if resp.status_code == 429:
+                    wait = min(2 ** (retry + 1), 15)
+                    print(f"LLM SMS 429 rate limited, waiting {wait}s (retry {retry+1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
 
-            data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if resp.status_code != 200:
+                    print(f"LLM SMS batch error: {resp.status_code} {resp.text[:200]}")
+                    return indices_to_parse, 0
 
-            # Try to fix common JSON issues (trailing commas, truncated)
-            content = content.strip()
-            if not content.endswith("}"):
-                # Truncated — try to salvage
-                last_brace = content.rfind("}")
-                if last_brace > 0:
-                    content = content[:last_brace + 1]
-                    # Close the array if needed
-                    if '"results"' in content and content.count("[") > content.count("]"):
-                        content = content.rstrip().rstrip(",") + "]}"
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-            parsed = json.loads(content)
-            results = parsed.get("results", [])
+                # Fix truncated JSON
+                content = content.strip()
+                if not content.endswith("}"):
+                    last_brace = content.rfind("}")
+                    if last_brace > 0:
+                        content = content[:last_brace + 1]
+                        if '"results"' in content and content.count("[") > content.count("]"):
+                            content = content.rstrip().rstrip(",") + "]}"
 
-            matched = 0
-            for r in results:
-                idx = r.get("index", -1)
-                if 0 <= idx < len(messages):
-                    all_results[idx] = r
-                    matched += 1
-            return matched
+                parsed = json.loads(content)
+                results = parsed.get("results", [])
 
-        except Exception as e:
-            print(f"LLM SMS batch exception: {e}")
-            return 0
+                matched = 0
+                for r in results:
+                    idx = r.get("index", -1)
+                    if 0 <= idx < len(messages):
+                        all_results[idx] = r
+                        matched += 1
+                return indices_to_parse, matched
 
-    # Pass 1: Process all SMS in batches
+            except Exception as e:
+                if retry < max_retries - 1:
+                    wait = min(2 ** (retry + 1), 10)
+                    print(f"LLM SMS batch exception: {e}, retrying in {wait}s ({retry+1}/{max_retries})")
+                    time.sleep(wait)
+                else:
+                    print(f"LLM SMS batch failed after {max_retries} attempts: {e}")
+                    return indices_to_parse, 0
+
+        return indices_to_parse, 0
+
+    # Build all batch index lists
+    all_batches = []
     for batch_start in range(0, len(messages), batch_size):
         batch_indices = list(range(batch_start, min(batch_start + batch_size, len(messages))))
-        matched = _call_llm(batch_indices)
-        print(f"LLM SMS pass 1 batch {batch_start}: {matched}/{len(batch_indices)}")
+        all_batches.append(batch_indices)
 
-    # Pass 2: Retry any missed indices in smaller batches
+    # Pass 1: Run batches concurrently (3 at a time)
+    max_workers = 3
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_call_llm, batch): batch for batch in all_batches}
+        for future in as_completed(futures):
+            indices, matched = future.result()
+            print(f"LLM SMS pass 1 batch {indices[0]}: {matched}/{len(indices)}")
+
+    # Pass 2: Retry missed indices in smaller concurrent batches
     missed = [i for i in range(len(messages)) if all_results[i] is None]
     if missed:
         print(f"LLM SMS pass 2: retrying {len(missed)} missed SMS")
-        retry_batch_size = 15  # Smaller batches for reliability
-        for retry_start in range(0, len(missed), retry_batch_size):
-            retry_indices = missed[retry_start:retry_start + retry_batch_size]
-            matched = _call_llm(retry_indices)
-            print(f"LLM SMS pass 2 retry: {matched}/{len(retry_indices)}")
+        retry_batches = []
+        retry_size = 15
+        for i in range(0, len(missed), retry_size):
+            retry_batches.append(missed[i:i + retry_size])
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {executor.submit(_call_llm, batch): batch for batch in retry_batches}
+            for future in as_completed(futures):
+                indices, matched = future.result()
+                print(f"LLM SMS pass 2 retry: {matched}/{len(indices)}")
 
     # Final stats
     filled = sum(1 for r in all_results if r is not None)
