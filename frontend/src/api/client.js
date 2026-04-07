@@ -180,5 +180,9 @@ export const unlinkCardPayment = (expenseId) =>
 export const recategorize = (userName = "") =>
   api.post("/api/settings/recategorize", null, { params: { user_name: userName } }).then((r) => r.data);
 
+// SMS balances
+export const getBalances = () =>
+  api.get("/api/sms/balances").then((r) => r.data);
+
 // Export the axios instance for direct use (e.g., SMS sync)
 export { api as apiInstance };

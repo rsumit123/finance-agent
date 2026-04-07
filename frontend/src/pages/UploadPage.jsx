@@ -256,44 +256,6 @@ export default function UploadPage() {
         <p>Connect Gmail or upload PDF statements</p>
       </div>
 
-      {/* ===== SMS SECTION (mobile only) ===== */}
-      {smsAvailable && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Smartphone size={18} /> SMS Sync
-            <InfoTip text="Reads transaction alert SMS from your phone's inbox. Extracts amount, merchant, date, and available balance from bank messages. Most accurate and real-time source." />
-          </h2>
-
-          <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-            Syncs bank SMS from the last 90 days ({new Date(Date.now() - 90 * 86400000).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → Today)
-            {smsLastSync && <span style={{ display: "block", marginTop: 4, fontSize: 11 }}>Last synced: {smsLastSync}</span>}
-          </p>
-
-          <button onClick={handleSmsSync} disabled={smsSyncing}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, padding: "14px 16px" }}>
-            {smsSyncing ? (
-              <><RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} /> Reading SMS...</>
-            ) : (
-              <><Smartphone size={16} /> Sync Bank SMS</>
-            )}
-          </button>
-
-          {smsResult && !smsResult.error && (
-            <div style={{ marginTop: 12, background: "var(--bg-input)", borderRadius: 8, padding: 12 }}>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <StatCard value={smsResult.imported} label="New" color="green" small />
-                <StatCard value={smsResult.duplicates} label="Duplicates" color="yellow" small />
-                <StatCard value={smsResult.messages_processed} label="SMS Read" color="dim" small />
-                {smsResult.balances_extracted > 0 && (
-                  <StatCard value={smsResult.balances_extracted} label="Balances" color="green" small />
-                )}
-              </div>
-            </div>
-          )}
-          {smsResult?.error && <ErrorMsg msg={smsResult.error} />}
-        </div>
-      )}
-
       {/* ===== GMAIL SECTION ===== */}
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -549,6 +511,50 @@ export default function UploadPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ===== MANUAL SMS SYNC (mobile only) ===== */}
+      {smsAvailable && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <details>
+            <summary style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+              <Smartphone size={16} /> Manual SMS Sync
+              <InfoTip text="Reads transaction alert SMS from your phone's inbox. Extracts amount, merchant, date, and available balance from bank messages." />
+            </summary>
+            <div style={{ marginTop: 12 }}>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+                SMS syncs automatically when you open the app. Use this to trigger a manual sync.
+              </p>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+                Syncs bank SMS from the last 90 days ({new Date(Date.now() - 90 * 86400000).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → Today)
+                {smsLastSync && <span style={{ display: "block", marginTop: 4, fontSize: 11 }}>Last synced: {smsLastSync}</span>}
+              </p>
+
+              <button onClick={handleSmsSync} disabled={smsSyncing}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, padding: "10px 14px" }}>
+                {smsSyncing ? (
+                  <><RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} /> Reading SMS...</>
+                ) : (
+                  <><Smartphone size={14} /> Sync Bank SMS</>
+                )}
+              </button>
+
+              {smsResult && !smsResult.error && (
+                <div style={{ marginTop: 12, background: "var(--bg-input)", borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <StatCard value={smsResult.imported} label="New" color="green" small />
+                    <StatCard value={smsResult.duplicates} label="Duplicates" color="yellow" small />
+                    <StatCard value={smsResult.messages_processed} label="SMS Read" color="dim" small />
+                    {smsResult.balances_extracted > 0 && (
+                      <StatCard value={smsResult.balances_extracted} label="Balances" color="green" small />
+                    )}
+                  </div>
+                </div>
+              )}
+              {smsResult?.error && <ErrorMsg msg={smsResult.error} />}
+            </div>
+          </details>
         </div>
       )}
 

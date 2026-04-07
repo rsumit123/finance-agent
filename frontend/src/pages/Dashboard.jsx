@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Mail, Upload, ArrowRight, Wallet, Smartphone } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
-import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights, getExpenses } from "../api/client";
+import { getExpenseSummary, getBudgetStatus, getSubscriptions, getNetworth, getInsights, getExpenses, getBalances } from "../api/client";
 
 const COLORS = [
   "#6366f1", "#22c55e", "#eab308", "#ef4444", "#f97316",
@@ -53,6 +53,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [recentTxns, setRecentTxns] = useState([]);
   const [hasAnyData, setHasAnyData] = useState(null); // null = unknown, true/false = checked
+  const [balances, setBalances] = useState(null);
   const navigate = useNavigate();
 
   // Period state
@@ -94,6 +95,7 @@ export default function Dashboard() {
       getExpenses({ start_date: dateRange.start, end_date: dateRange.end, limit: 5 }).then((data) => {
         setRecentTxns(Array.isArray(data) ? data : (data.expenses || []));
       }).catch(() => {}),
+      getBalances().then(setBalances).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [selectedYear, selectedMonth, weekOffset, mode]);
 
@@ -275,6 +277,34 @@ export default function Dashboard() {
           </button>
         )}
       </div>
+
+      {/* Live account balances */}
+      {balances && balances.accounts?.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ marginBottom: 0 }}>Accounts</h2>
+            <span style={{ fontSize: 18, fontWeight: 700 }}>
+              {formatINR(balances.total_balance)}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+            {balances.accounts.map((acc, i) => (
+              <div key={i} style={{
+                flex: "0 0 auto", minWidth: 140,
+                background: "var(--bg-input)", borderRadius: 10, padding: "12px 14px",
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{formatINR(acc.balance)}</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2, textTransform: "capitalize" }}>
+                  {acc.bank} {acc.account_hint ? `\u2022\u2022${acc.account_hint}` : ""}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  as of {new Date(acc.as_of).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Empty period message */}
       {!hasPeriodData && (

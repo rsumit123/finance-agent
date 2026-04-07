@@ -1,8 +1,12 @@
+import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import {
   LayoutDashboard, Receipt, Upload, MessageCircle, Wallet, CreditCard, LogOut, Loader, Sparkles,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { Capacitor } from "@capacitor/core";
+import { isSmsAvailable, syncSmsMessages } from "./services/smsSync";
+import { apiInstance } from "./api/client";
 import Dashboard from "./pages/Dashboard";
 import Expenses from "./pages/Expenses";
 import UploadPage from "./pages/UploadPage";
@@ -15,6 +19,24 @@ import "./App.css";
 
 function ProtectedApp() {
   const { user, loading, logout } = useAuth();
+  const [autoSyncing, setAutoSyncing] = useState(false);
+
+  // Auto-sync SMS on app open (native only, max once per 30 min)
+  useEffect(() => {
+    if (loading || !user) return;
+    if (!Capacitor.isNativePlatform() || !isSmsAvailable()) return;
+    const lastSync = parseInt(localStorage.getItem("sms_last_sync_ts") || "0");
+    const thirtyMin = 30 * 60 * 1000;
+    if (Date.now() - lastSync < thirtyMin) return;
+
+    setAutoSyncing(true);
+    syncSmsMessages(apiInstance, 90).then((result) => {
+      if (result && !result.error) {
+        localStorage.setItem("sms_last_sync_ts", String(Date.now()));
+        localStorage.setItem("sms_last_sync", new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }));
+      }
+    }).catch(() => {}).finally(() => setAutoSyncing(false));
+  }, [loading, user]);
 
   if (loading) {
     return (
@@ -24,7 +46,7 @@ function ProtectedApp() {
           <span style={{ fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>MoneyFlow</span>
         </div>
         <Loader size={24} style={{ color: "var(--text-dim)", animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
       </div>
     );
   }
@@ -70,7 +92,13 @@ function ProtectedApp() {
         </Routes>
       </main>
       <nav className="bottom-bar">
-        <NavLink to="/" end><LayoutDashboard size={20} /> Home</NavLink>
+        <NavLink to="/" end>
+          <LayoutDashboard size={20} />
+          <span style={{ position: "relative" }}>
+            Home
+            {autoSyncing && <span style={{ position: "absolute", top: -2, right: -8, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1.5s ease-in-out infinite" }} />}
+          </span>
+        </NavLink>
         <NavLink to="/expenses"><Receipt size={20} /> Expenses</NavLink>
         <NavLink to="/advisor" className="ai-tab">
           <div className="ai-tab-icon"><Sparkles size={20} /></div>
